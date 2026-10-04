@@ -140,4 +140,4 @@ Super Cat 基于 [Dr_rOot](https://github.com/agalwood) 的 [Motrix](https://git
 
 ## 📜 开源许可
 
-基于 [MIT license](https://opensource.org/licenses/MIT) 许可进行开源，Copyright (c) 2018-present Dr_rOot。
+[MIT](./LICENSE) © 2018-present Dr_rOot · 2026 LingNaiNya

@@ -133,4 +133,4 @@ Super Cat is based on [Motrix](https://github.com/agalwood/Motrix) by [Dr_rOot](
 
 ## 📜 License
 
-[MIT](https://opensource.org/licenses/MIT) Copyright (c) 2018-present Dr_rOot
+[MIT](./LICENSE) © 2018-present Dr_rOot · 2026 LingNaiNya

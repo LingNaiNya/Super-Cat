@@ -1,0 +1,262 @@
+/* Element UI Skin
+--------------------------
+   Element UI is themed through Variables.scss. What remains here is the
+   part that is positioning, animation and the frosted treatment of the
+   floating layers, which the component library cannot express with
+   variables alone.
+-------------------------- */
+
+/* Floating layers
+-------------------------- */
+.el-dialog {
+  @include mo-glass-overlay();
+  margin-top: 8vh !important;
+  overflow: hidden;
+}
+
+.el-dialog__header {
+  padding: 20px 20px 10px;
+}
+
+.el-dialog__body {
+  color: var(--mo-text-regular, inherit);
+}
+
+/* The footer keeps the glass but gets its own subtle separation */
+.el-dialog .el-dialog__footer {
+  border-top: 1px solid var(--mo-glass-border);
+}
+
+.el-message-box {
+  @include mo-glass-overlay($mo-blur-lg, $mo-radius-lg);
+  overflow: hidden;
+}
+
+.el-message,
+.el-notification {
+  @include mo-glass-overlay($mo-blur-lg, $mo-radius-md);
+  overflow: hidden;
+  /* The glass mixin leaves position: relative, which drops these notices out
+     of their viewport slot and into document flow below #app — the
+     preference save toast then only appears after scrolling the whole page.
+     Restore Element's fixed top-centre placement. */
+  position: fixed;
+}
+
+.el-popover,
+.el-select-dropdown,
+.el-dropdown-menu,
+.el-picker-panel {
+  @include mo-glass-overlay($mo-blur-lg, $mo-radius-md);
+  /* Same mixin side effect: popper.js anchors these layers by their own
+     coordinates, which only work while they keep Element's absolute
+     positioning. */
+  position: absolute;
+}
+
+.el-autocomplete-suggestion {
+  @include mo-glass-overlay($mo-blur-lg, $mo-radius-md);
+}
+
+.el-tooltip__popper.is-dark {
+  border-radius: $mo-radius-xs;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 18px;
+  box-shadow: var(--mo-glass-shadow);
+  backdrop-filter: blur($mo-blur-sm);
+  -webkit-backdrop-filter: blur($mo-blur-sm);
+}
+
+.el-popper .popper__arrow {
+  display: none;
+}
+
+.el-dropdown-menu__item,
+.el-select-dropdown__item {
+  border-radius: $mo-radius-xs;
+  margin: 2px 6px;
+  transition: $mo-transition-fast;
+}
+
+/* Loading veil: the app dims and blurs instead of turning grey */
+.el-loading-mask {
+  background-color: var(--mo-overlay-scrim);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.el-loading-mask.is-fullscreen {
+  z-index: 4000;
+  border-radius: $mo-radius-lg;
+}
+
+.el-loading-spinner .path {
+  stroke: var(--mo-primary);
+}
+
+/* Controls
+-------------------------- */
+.el-button {
+  border-radius: $mo-radius-sm;
+  transition: $mo-transition-base;
+
+  &:not(.is-disabled) {
+    &:hover {
+      transform: translateY(-1px);
+    }
+    &:active {
+      transform: translateY(0) scale($mo-press-scale);
+    }
+  }
+}
+
+.el-input__inner,
+.el-textarea__inner {
+  border-radius: $mo-radius-sm;
+  transition: $mo-transition-base;
+}
+
+.el-textarea__inner {
+  padding: 8px 12px;
+}
+
+.el-input-group__append,
+.el-input-group__prepend {
+  border-radius: $mo-radius-sm;
+}
+
+.el-checkbox__inner {
+  border-radius: 5px;
+  transition: $mo-transition-fast;
+}
+
+.el-radio__inner,
+.el-switch__core {
+  transition: $mo-transition-fast;
+}
+
+.el-switch__core {
+  border-radius: $mo-radius-pill;
+}
+
+.el-progress-bar__outer,
+.el-progress-bar__inner {
+  border-radius: $mo-radius-pill;
+  overflow: hidden;
+}
+
+/* Tabs use one segmented treatment everywhere (add-task dialog, task detail
+   drawer): a primary-tinted pill marks the active item. Element positions its
+   underline with a transform, which is what used to leave the bar off centre
+   the moment the item was rounded — the bar is retired rather than moved. */
+.el-card,
+.el-upload-dragger,
+.el-tag {
+  border-radius: $mo-radius-sm;
+}
+
+.el-tabs__item {
+  border-radius: $mo-radius-sm;
+  transition: $mo-transition-base;
+
+  &:hover {
+    color: var(--mo-primary);
+  }
+
+  &.is-active {
+    color: var(--mo-primary);
+    background-color: rgba(var(--mo-primary-rgb), 0.14);
+  }
+}
+
+/* Element strips the outer padding of the first/last item of a line tab
+   (`.el-tabs--top …:nth-child(2)` / `…:last-child`) so labels sit flush with
+   the container edge — right for an underline, but with a pill background the
+   label ends up 10px off the pill centre. Restore the symmetric 20px so the
+   pill wraps the label evenly. Mirrors Element's own selectors so this wins
+   the cascade (same specificity, imported later). */
+.el-tabs--top .el-tabs__item.is-top:nth-child(2),
+.el-tabs--bottom .el-tabs__item.is-top:nth-child(2),
+.el-tabs--top .el-tabs__item.is-bottom:nth-child(2),
+.el-tabs--bottom .el-tabs__item.is-bottom:nth-child(2),
+.el-tabs--top .el-tabs__item.is-top:last-child,
+.el-tabs--bottom .el-tabs__item.is-top:last-child,
+.el-tabs--top .el-tabs__item.is-bottom:last-child,
+.el-tabs--bottom .el-tabs__item.is-bottom:last-child {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+.el-tabs__active-bar {
+  display: none;
+}
+
+/* No baseline rule: the pills carry the state on their own, and a grey line
+   underneath them only adds noise against the glass surfaces. */
+.el-tabs__nav-wrap::after {
+  background-color: transparent;
+}
+
+.el-table,
+.el-table__body-wrapper,
+.el-table--border {
+  border-radius: $mo-radius-md;
+}
+
+.el-table th,
+.el-table td {
+  border-radius: 0;
+}
+
+/* Transitions
+-------------------------- */
+.dialog-fade-enter-active {
+  animation: mo-scale-in $mo-duration-base $mo-ease-emphasized;
+}
+
+.dialog-fade-leave-active {
+  animation: mo-scale-out $mo-duration-fast $mo-ease-standard;
+}
+
+.el-fade-in-linear-enter-active,
+.el-fade-in-linear-leave-active,
+.fade-in-linear-enter-active,
+.fade-in-linear-leave-active {
+  transition: opacity $mo-duration-base $mo-ease-standard;
+}
+
+.el-zoom-in-top-enter-active,
+.el-zoom-in-top-leave-active,
+.el-zoom-in-bottom-enter-active,
+.el-zoom-in-bottom-enter-active {
+  transform-origin: center top;
+  transition: opacity $mo-duration-fast $mo-ease-standard,
+    transform $mo-duration-fast $mo-ease-emphasized;
+}
+
+.el-zoom-in-top-enter,
+.el-zoom-in-top-leave-to,
+.el-zoom-in-bottom-enter,
+.el-zoom-in-bottom-leave-to {
+  opacity: 0;
+  transform: scaleY(0.94) translateY(-6px);
+}
+
+/* Draggable dialog handles should read as part of the glass header */
+.el-dialog__headerbtn {
+  border-radius: $mo-radius-xs;
+  transition: $mo-transition-fast;
+}
+
+/* Helper class for app components that need the frosted look */
+.mo-glass-card {
+  @include mo-glass-surface();
+  @include mo-glass-sheen();
+}
+
+.mo-glass-card-interactive {
+  @include mo-glass-surface();
+  @include mo-glass-sheen();
+  @include mo-hover-lift();
+}

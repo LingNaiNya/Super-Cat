@@ -1,0 +1,404 @@
+/* Motion Keyframes
+--------------------------
+   Imported once by Theme/Index.scss, so the animation names below are
+   available to every component.
+-------------------------- */
+
+/* Entrance: the base gesture for cards and list rows.
+   Opacity only. Sliding a page or a long list over 8+ pixels reads as the
+   layout moving rather than as content appearing, and it forces the frosted
+   chrome around it to repaint. */
+@keyframes mo-fade-up {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Route transition: the outgoing page dissolves, it does not move. */
+@keyframes mo-page-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes mo-page-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes mo-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Dialogs: a restrained scale, no travel */
+@keyframes mo-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes mo-scale-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+/* Drawers slide in from the trailing edge */
+@keyframes mo-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translate3d(36px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Ambient motion of the background gradient.
+   Kept extremely slow on purpose: it runs for the whole session, and any
+   movement here is a full viewport repaint behind every frosted surface. */
+@keyframes mo-orb-drift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(1.5%, -2%, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Slow sweep across progress bars: a download is alive, not frozen */
+@keyframes mo-progress-sheen {
+  0% {
+    transform: translate3d(-100%, 0, 0);
+  }
+  100% {
+    transform: translate3d(320%, 0, 0);
+  }
+}
+
+/* Pulses a soft halo around a live indicator. Only the shadow ring expands —
+   the element itself never fades or scales. (The old opacity/scale version was
+   written for a glow ring but got applied to the icon container, so the icon
+   itself swelled to 1.5x and vanished on loop: read as wobbling.) Colour comes
+   from --mo-pulse-rgb, defaulting to live green. */
+@keyframes mo-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--mo-pulse-rgb, 52, 211, 153), 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 9px rgba(var(--mo-pulse-rgb, 52, 211, 153), 0);
+  }
+  100% {
+    box-shadow: 0 0 0 9px rgba(var(--mo-pulse-rgb, 52, 211, 153), 0);
+  }
+}
+
+/* Gear switcher: icon pop when a gear becomes active */
+@keyframes mo-gear-pop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Super gear with bytes on the wire: a measured forward pitch, one axis and
+   half the old amplitude — the previous two-axis -8deg shake at 0.8s read as
+   the icon glitching rather than as speed. */
+@keyframes mo-gear-thrust {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-2px) rotate(-4deg);
+  }
+}
+
+/* A highlight sweeping across the icon — the speed streak */
+@keyframes mo-gear-sheen {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -20% 0;
+  }
+}
+
+/* ── Gear ignition burst ──────────────────────────────────────────────
+   Fires once when a switch lands on Super (full show) or High (shockwave
+   only). One-shot, no fill: the resting styles take over when the burst
+   classes are removed ~0.9s later. */
+
+/* Rocket: compress to charge, launch straight upward, settle back with an
+   overshoot. Purely vertical on purpose — a tilt (the old -10deg whip)
+   reads as a sideways slide of the icon, not as a lean. */
+@keyframes mo-gear-launch {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  16% {
+    transform: translateY(4px) scale(0.76);
+  }
+  46% {
+    transform: translateY(-22px) scale(1.08);
+  }
+  72% {
+    transform: translateY(0) scale(0.96);
+  }
+  86% {
+    transform: translateY(-3px) scale(1.03);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Shockwave ring: blows far past the card edge and dissolves. Three rings
+   fire staggered from the active button (.shocks). */
+@keyframes mo-gear-shock {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(4.6);
+  }
+}
+
+/* The card takes the recoil of the launch: a real jolt, not a nudge */
+@keyframes mo-gear-recoil {
+  0% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  22% {
+    transform: translateY(9px) rotate(0.5deg) scale(0.972);
+  }
+  62% {
+    transform: translateY(-2px) rotate(-0.2deg) scale(1.006);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+}
+
+/* Radial ignition light welling up inside the card — peaks hard, early */
+@keyframes mo-gear-flash {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Exhaust particles: kick downward and out, shrink, fade. Travel comes from
+   --flame-x (set per particle) so one keyframe drives the whole spread. */
+@keyframes mo-gear-flame {
+  0% {
+    opacity: 0.95;
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--flame-x, 0px), 40px) scale(0.3);
+  }
+}
+
+/* Every card on the dashboard takes the ignition tint AND throws an outer
+   red halo for a beat. The outer glass shadow is restated so the card does
+   not lose its lift mid-flash. */
+@keyframes mo-gear-allflash {
+  0% {
+    box-shadow: var(--mo-glass-shadow), 0 0 0 rgba(255, 93, 87, 0),
+      inset 0 0 0 1px rgba(255, 93, 87, 0), inset 0 0 40px rgba(255, 93, 87, 0);
+  }
+  20% {
+    box-shadow: var(--mo-glass-shadow), 0 0 44px rgba(255, 93, 87, 0.55),
+      inset 0 0 0 1px rgba(255, 93, 87, 0.75), inset 0 0 60px rgba(255, 93, 87, 0.28);
+  }
+  100% {
+    box-shadow: var(--mo-glass-shadow), 0 0 0 rgba(255, 93, 87, 0),
+      inset 0 0 0 1px rgba(255, 93, 87, 0), inset 0 0 40px rgba(255, 93, 87, 0);
+  }
+}
+
+/* Whole-window ignition veil: a red vignette sweeping the app once */
+@keyframes mo-gear-veil {
+  0% {
+    opacity: 0;
+  }
+  16% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Caption lands with a coloured echo of the gear it just became */
+@keyframes mo-gear-caption-glow {
+  0% {
+    text-shadow: 0 0 30px rgba(var(--burst-rgb, 255, 93, 87), 0.95),
+      0 0 60px rgba(var(--burst-rgb, 255, 93, 87), 0.55);
+    transform: scale(1.16);
+  }
+  100% {
+    text-shadow: 0 0 0 rgba(var(--burst-rgb, 255, 93, 87), 0),
+      0 0 0 rgba(var(--burst-rgb, 255, 93, 87), 0);
+    transform: scale(1);
+  }
+}
+
+/* Speedometer icon scale: transform ONLY, nothing else.
+   Keeping box-shadow in this keyframe used to force the whole animation
+   onto the main thread (paint property => re-rasterise every frame), and
+   each re-raster re-snapped the glyph's antialiasing by ~1 physical px —
+   the "slides out right-down, snaps back left-up" hitch. With transform
+   alone the layer keeps its texture and the compositor only samples it.
+   The halo lives in mo-speedo-halo on the icon's ::before instead. */
+@keyframes mo-speedo-burst {
+  0% {
+    transform: scale(1);
+  }
+  14% {
+    transform: scale(0.94);
+  }
+  46% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* The ring of light, painted on the icon's ::before so the icon texture
+   itself never re-rasterises during the burst. Same values and timing as
+   before — only the host element changed. */
+@keyframes mo-speedo-halo {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--burst-rgb, 255, 93, 87), 0.75);
+  }
+  46% {
+    box-shadow: 0 0 0 16px rgba(var(--burst-rgb, 255, 93, 87), 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 26px rgba(var(--burst-rgb, 255, 93, 87), 0);
+  }
+}
+
+/* Speedometer gear label: rises into place under a gear-coloured glow.
+   Two hard rules:
+   - scale stays pinned to the resting scale(.5): the label is a width:0
+     overflow hack whose scale pivots on its left edge, so any scale change
+     shoves the text sideways instead of growing it in place;
+   - NO opacity here: a running animation outranks every class, so an
+     opacity keyframe would relight the outgoing label mid-leave and print
+     the two words on top of each other (seen only in the expanded state,
+     where the animation actually renders — the leave class's opacity:0
+     loses the priority fight). The incoming label's fade is owned by the
+     flip transition (0.35 -> 1), which never runs on the leaving node. */
+@keyframes mo-speedo-text {
+  0% {
+    transform: translateY(7px) scale(0.5);
+    text-shadow: 0 0 22px rgba(var(--burst-rgb, 255, 93, 87), 1),
+      0 0 44px rgba(var(--burst-rgb, 255, 93, 87), 0.6);
+  }
+  60% {
+    transform: translateY(-1px) scale(0.5);
+    text-shadow: 0 0 14px rgba(var(--burst-rgb, 255, 93, 87), 0.65),
+      0 0 28px rgba(var(--burst-rgb, 255, 93, 87), 0.35);
+  }
+  100% {
+    transform: translateY(0) scale(0.5);
+    text-shadow: 0 0 0 rgba(var(--burst-rgb, 255, 93, 87), 0),
+      0 0 0 rgba(var(--burst-rgb, 255, 93, 87), 0);
+  }
+}
+
+@keyframes mo-breathe {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Chart bars grow from the baseline */
+@keyframes mo-grow-up {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* Stroke drawing, used by the dashboard gauges */
+@keyframes mo-dash-in {
+  from {
+    stroke-dashoffset: var(--mo-dash-total, 300);
+  }
+  to {
+    stroke-dashoffset: var(--mo-dash-offset, 0);
+  }
+}
+
+/* Feedback when an action is rejected */
+@keyframes mo-shake {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  20% {
+    transform: translate3d(-5px, 0, 0);
+  }
+  40% {
+    transform: translate3d(5px, 0, 0);
+  }
+  60% {
+    transform: translate3d(-3px, 0, 0);
+  }
+  80% {
+    transform: translate3d(3px, 0, 0);
+  }
+}

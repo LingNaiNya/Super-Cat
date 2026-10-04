@@ -1,0 +1,143 @@
+/* Super Cat App Design Tokens
+--------------------------
+   Only declares variables and mixins, never emits CSS by itself,
+   so it is safe to be imported by every component style block.
+
+   Surfaces are described by *tokens* (radius / blur / tint / shadow)
+   instead of raw numbers, that keeps corners and glass consistent
+   across the whole app: cards 18px, controls 10px, pills fully round.
+-------------------------- */
+
+/* Radius
+-------------------------- */
+$mo-radius-xs: 8px;
+$mo-radius-sm: 10px;
+$mo-radius-md: 14px;
+$mo-radius-lg: 18px;
+$mo-radius-xl: 24px;
+$mo-radius-pill: 999px;
+
+/* Blur strength
+-------------------------- */
+$mo-blur-sm: 12px;
+$mo-blur-md: 20px;
+$mo-blur-lg: 32px;
+$mo-blur-xl: 44px;
+
+/* Layer scale used for hover / press feedback */
+$mo-lift: -2px;
+$mo-press-scale: 0.97;
+
+/* Motion
+-------------------------- */
+$mo-duration-fast: 160ms;
+$mo-duration-base: 240ms;
+$mo-duration-slow: 420ms;
+$mo-ease-emphasized: cubic-bezier(0.22, 1, 0.36, 1);
+$mo-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+$mo-ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+$mo-transition-base: all $mo-duration-base $mo-ease-standard;
+$mo-transition-emphasized: all $mo-duration-base $mo-ease-emphasized;
+$mo-transition-fast: all $mo-duration-fast $mo-ease-standard;
+
+/* Glass surfaces
+--------------------------
+   Every mixin reads CSS custom properties, so the same declaration works
+   for both the light theme and the dark theme and follows "跟随系统".
+-------------------------- */
+@mixin mo-glass-surface($blur: $mo-blur-md, $radius: $mo-radius-lg) {
+  position: relative;
+  border-radius: $radius;
+  border: 1px solid var(--mo-glass-border);
+  background-color: var(--mo-glass-background);
+  background-image: linear-gradient(
+    var(--mo-glass-sheen-start),
+    var(--mo-glass-sheen-end)
+  );
+  box-shadow: var(--mo-glass-shadow);
+  backdrop-filter: blur($blur) saturate(var(--mo-glass-saturate));
+  -webkit-backdrop-filter: blur($blur) saturate(var(--mo-glass-saturate));
+}
+
+/* Lighter variant: chrome such as sub navigation and toolbars.
+   No backdrop blur here on purpose: these planes cover the whole window, and
+   blurring full-height regions costs real frames while adding little, because
+   the ambient background behind them is already soft. */
+@mixin mo-glass-chrome($blur: 0, $radius: 0) {
+  position: relative;
+  border-radius: $radius;
+  background-color: var(--mo-glass-chrome-background);
+  border-color: var(--mo-glass-border);
+
+  @if $blur != 0 {
+    backdrop-filter: blur($blur) saturate(var(--mo-glass-saturate));
+    -webkit-backdrop-filter: blur($blur) saturate(var(--mo-glass-saturate));
+  }
+}
+
+/* Heavier variant: modal dialogs and popovers floating above the app */
+@mixin mo-glass-overlay($blur: $mo-blur-xl, $radius: $mo-radius-xl) {
+  position: relative;
+  border-radius: $radius;
+  border: 1px solid var(--mo-glass-border-strong);
+  background-color: var(--mo-glass-overlay-background);
+  background-image: linear-gradient(
+    var(--mo-glass-sheen-start),
+    var(--mo-glass-sheen-end)
+  );
+  box-shadow: var(--mo-glass-overlay-shadow);
+  backdrop-filter: blur($blur) saturate(var(--mo-glass-saturate));
+  -webkit-backdrop-filter: blur($blur) saturate(var(--mo-glass-saturate));
+}
+
+/* Hairline highlight on the top edge: the classic "glass lip" */
+@mixin mo-glass-sheen($opacity: 0.7) {
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 8%;
+    right: 8%;
+    height: 1px;
+    pointer-events: none;
+    border-radius: inherit;
+    opacity: $opacity;
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      var(--mo-glass-sheen-line),
+      transparent
+    );
+  }
+}
+
+/* Elevate on hover, used by cards and list rows.
+   Small and quick on purpose: a large travel with a long curve is what makes a
+   list feel like it is floating around under the cursor. */
+@mixin mo-hover-lift($lift: -1px, $shadow: var(--mo-glass-shadow-hover)) {
+  transition: transform $mo-duration-fast $mo-ease-standard,
+    box-shadow $mo-duration-fast $mo-ease-standard;
+  &:hover {
+    transform: translateY($lift);
+    box-shadow: $shadow;
+  }
+}
+
+@mixin mo-focus-ring($color: var(--mo-focus-ring)) {
+  outline: none;
+  box-shadow: 0 0 0 3px $color;
+}
+
+@mixin mo-text-glow($color: var(--mo-primary)) {
+  background-image: linear-gradient(135deg, $color, #8b5cf6 60%, #22d3ee);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Entrance: fade + rise, driven by --mo-enter-delay for stagger */
+@mixin mo-enter-animation($duration: $mo-duration-slow) {
+  animation: mo-fade-up $duration $mo-ease-emphasized both;
+  animation-delay: var(--mo-enter-delay, 0ms);
+}

@@ -1,0 +1,677 @@
+html,
+body {
+  height: 100%;
+  padding: 0;
+}
+
+/* App Theme Tokens
+--------------------------
+   Light defaults. Theme/Dark.scss overrides them under .theme-dark, so
+   "跟随系统" works without touching a single component.
+-------------------------- */
+:root {
+  --mo-primary: #{$mo-primary};
+  --mo-primary-rgb: #{$mo-primary-rgb};
+  --mo-accent-cyan: #{$mo-accent-cyan};
+  --mo-accent-violet: #{$mo-accent-violet};
+  --mo-accent-pink: #{$mo-accent-pink};
+  --mo-accent-green: #{$mo-accent-green};
+  --mo-accent-amber: #{$mo-accent-amber};
+
+  /* Speed-gear accents: dashboard gear switcher + floating speedometer.
+     High follows the live primary so it re-tints with the theme; the rgb
+     triplets feed rgba() halos (no color-mix on this Chromium). */
+  --mo-gear-super: #ff5d57;
+  --mo-gear-super-rgb: 255, 93, 87;
+  --mo-gear-high: var(--mo-primary);
+  --mo-gear-high-rgb: var(--mo-primary-rgb);
+  --mo-gear-low: #34d399;
+  --mo-gear-low-rgb: 52, 211, 153;
+
+  --mo-page-background: #eef0f7;
+
+  --mo-glass-background: rgba(255, 255, 255, 0.58);
+  --mo-glass-background-hover: rgba(255, 255, 255, 0.74);
+  --mo-glass-chrome-background: rgba(255, 255, 255, 0.46);
+  --mo-glass-overlay-background: rgba(252, 253, 255, 0.82);
+  --mo-glass-border: rgba(255, 255, 255, 0.7);
+  --mo-glass-border-strong: rgba(255, 255, 255, 0.78);
+  --mo-glass-sheen-start: rgba(255, 255, 255, 0.42);
+  --mo-glass-sheen-end: rgba(255, 255, 255, 0.06);
+  --mo-glass-sheen-line: rgba(255, 255, 255, 0.92);
+  --mo-glass-tint: rgba(255, 255, 255, 0.5);
+  --mo-glass-saturate: 165%;
+  --mo-glass-shadow: 0 10px 30px -18px rgba(24, 28, 60, 0.42), 0 2px 8px -4px rgba(24, 28, 60, 0.16);
+  --mo-glass-shadow-hover: 0 22px 46px -22px rgba(24, 28, 60, 0.5), 0 6px 16px -8px rgba(24, 28, 60, 0.22);
+  --mo-glass-overlay-shadow: 0 40px 90px -40px rgba(20, 24, 55, 0.6), 0 12px 32px -18px rgba(20, 24, 55, 0.32);
+
+  --mo-focus-ring: rgba(91, 91, 250, 0.28);
+  --mo-overlay-scrim: rgba(24, 26, 48, 0.32);
+  --mo-background-opacity: 1;
+
+  --mo-text-primary: #{$--color-text-primary};
+  --mo-text-regular: #{$--color-text-regular};
+  --mo-text-secondary: #{$--color-text-secondary};
+  --mo-text-inverse: #ffffff;
+
+  --mo-orb-1: radial-gradient(circle at 50% 50%, rgba(91, 91, 250, 0.68), rgba(91, 91, 250, 0) 72%);
+  --mo-orb-2: radial-gradient(circle at 50% 50%, rgba(168, 85, 247, 0.52), rgba(168, 85, 247, 0) 72%);
+  --mo-orb-3: radial-gradient(circle at 50% 50%, rgba(34, 211, 238, 0.5), rgba(34, 211, 238, 0) 72%);
+  --mo-orb-4: radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.42), rgba(52, 211, 153, 0) 72%);
+}
+
+body {
+  font-family: "Monospaced Number", "Chinese Quote", -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-variant: tabular-nums;
+  font-size: $--font-size-medium;
+  background-color: $--page-background;
+}
+
+/* App Ambient Background
+--------------------------
+   A fixed layer of soft brand coloured light sitting behind everything.
+   This is what gives the frosted surfaces something to blur, and it stays
+   still while pages scroll, so the glass reads as a material rather than
+   as a semi transparent box.
+-------------------------- */
+#app {
+  &::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: var(--mo-background-opacity);
+    background-image: var(--mo-orb-1), var(--mo-orb-2), var(--mo-orb-3), var(--mo-orb-4);
+    background-size: 50% 50%, 50% 50%, 50% 50%, 50% 50%;
+    background-position: left top, right top, left bottom, right bottom;
+    background-repeat: no-repeat;
+    /* The ambient light drifts very slowly, so the glass never looks static */
+    /* The drift is a 4 minute cycle: slow enough to read as light, not as
+       motion, and cheap enough that the frosted surfaces above it are not
+       re-blurred every frame. */
+    animation: mo-orb-drift 240s linear infinite;
+  }
+
+  /* Film grain, keeps the blur from banding on large flat areas */
+  &::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.05;
+    background-repeat: repeat;
+    background-size: 180px 180px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 8px;
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+::-webkit-scrollbar-thumb:window-inactive {
+  background-color: rgba(0, 0, 0, 0.25);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-resizer {
+  display: none;
+}
+
+img {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+iframe {
+  border: 0;
+}
+
+.clearfix {
+  @include clearfix();
+}
+
+/* Element UI
+-------------------------- */
+.el-progress-bar__outer {
+  background-color: var(--mo-glass-border);
+  overflow: hidden;
+}
+
+.el-progress-bar__inner {
+  transition: all 0.4s cubic-bezier(0.08, 0.82, 0.17, 1) 0s;
+  position: relative;
+  overflow: hidden;
+
+  /* A slow light sweep reads as "transfer in progress" without a spinner */
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 30%;
+    border-radius: $mo-radius-pill;
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.55),
+      transparent
+    );
+    animation: mo-progress-sheen 2.2s $mo-ease-standard infinite;
+  }
+}
+
+.el-progress--line.is-text {
+  .el-progress-bar__inner::before {
+    content: "";
+    opacity: 0;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #fff;
+    border-radius: $mo-radius-pill;
+    animation: mo-progress-active 2.4s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+  }
+}
+
+@keyframes mo-progress-active {
+  0% {
+    opacity: 0.1;
+    width: 0;
+  }
+  20% {
+    opacity: 0.5;
+    width: 0;
+  }
+  100% {
+    opacity: 0;
+    width: 100%;
+  }
+}
+
+.el-message-box__wrapper {
+  outline: none;
+}
+
+.el-message__content {
+  line-height: 18px;
+  word-break: break-all;
+  a {
+    color: $--link-color;
+  }
+}
+
+.tab-title-dialog {
+  .el-dialog__header {
+    padding: 0 20px;
+    position: relative;
+    z-index: 10;
+  }
+  .el-dialog__body {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+}
+
+.el-form-item--mini .el-form-item__info {
+  padding-top: 1px;
+}
+
+.el-form-item__info {
+  font-size: 12px;
+  line-height: 1;
+  padding-top: 4px;
+  color: $--color-info;
+  > a {
+    margin-right: 10px;
+  }
+}
+
+.el-input-number.el-input-number--mini {
+  &.is-controls-left .el-input__inner {
+    padding-left: 34px;
+    padding-right: 5px;
+  }
+  &.is-controls-right .el-input__inner {
+    padding-left: 5px;
+    padding-right: 34px;
+  }
+}
+
+.el-drawer__container {
+  outline: none;
+}
+
+/* App Main
+-------------------------- */
+#app,
+#container {
+  height: 100%;
+  background-color: $--app-background;
+}
+
+/* Motion
+--------------------------
+   Route changes dissolve. Nothing travels: the navigation around the page has
+   to stay perfectly still while the page swaps, otherwise the whole chrome
+   appears to jump along with it. */
+
+/* Gear name swap when the limiter gear changes. In-out, not out-in: the
+   new label starts entering the moment the gear flips, so the text never
+   sits stale on the old value while an exit animation runs. The old label
+   gets NO transition at all — with in-out the two labels share a cell, and
+   any fade window prints them on top of each other (0.3s then 0.08s were
+   both visibly doubled). Zero duration makes Vue drop the old node within
+   a frame or two, so the swap is: old gone, new already rising. */
+.gear-flip-enter-active {
+  transition: transform $mo-duration-base $mo-ease-emphasized,
+    opacity $mo-duration-base $mo-ease-standard;
+}
+
+.gear-flip-leave-active {
+  transition: none;
+}
+
+/* Opaque-to-invisible the very frame Vue tags the outgoing label (its
+   removal lands a double-rAF later, and without this the old word sits at
+   full brightness under the incoming one for those 2-4 frames). */
+.gear-flip-leave {
+  opacity: 0;
+}
+
+/* Start the incoming label at 0.35, not 0: it must be visible on the very
+   frame the old one disappears, or the swap flashes empty. */
+.gear-flip-enter {
+  transform: translateY(10px);
+  opacity: 0.35;
+}
+
+.gear-flip-enter-to {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.gear-flip-leave-to {
+  opacity: 0;
+}
+
+.page-view {
+  height: 100%;
+  /* No will-change here: a permanent promoted stacking context traps every
+     child z-index (e.g. the task-detail drawer wrapper at 2014) at this
+     element's own level, so body-level layers like the modal scrim
+     (v-modal, 2013) paint above the whole app and swallow every click.
+     The route dissolve animates fine without the promotion. */
+}
+
+.page-enter-active {
+  animation: mo-page-in $mo-duration-fast $mo-ease-standard both;
+}
+
+.page-leave-active {
+  animation: mo-page-out $mo-duration-fast $mo-ease-standard both;
+}
+
+/* Cards and list rows fade in, staggered through --mo-enter-delay. */
+.mo-stagger-item {
+  animation: mo-fade-up $mo-duration-base $mo-ease-standard both;
+  animation-delay: var(--mo-enter-delay, 0ms);
+}
+
+/* Feedback shared by interactive icons */
+.mo-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: $mo-radius-pill;
+  transition: $mo-transition-base;
+  &:active {
+    transform: scale($mo-press-scale);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter-active,
+  .page-leave-active,
+  .mo-stagger-item,
+  #app::before {
+    animation: none !important;
+  }
+}
+
+/* Window corners are rounded by the OS around the *whole* window surface
+   (DWM on Windows, AppKit on macOS). The page content stays square so the
+   content, the body wash and the native frame all break on one arc — a
+   content-level radius bigger than the native one leaves a tinted crescent
+   at every corner ("background block smaller than the window radius"). */
+
+/* The frosted surfaces need contrast behind them. On macOS the native
+   vibrancy material already provides it; on Windows and Linux the page
+   background does, so the tint stays a little denser there. */
+.app-platform-windows,
+.app-platform-linux {
+  --mo-glass-tint: rgba(255, 255, 255, 0.58);
+
+  body {
+    background-color: $--page-background;
+  }
+}
+
+/* macOS: the vibrancy material is already a blur, so the ambient gradient
+   steps aside and lets the system material show through. */
+.app-platform-macos {
+  --mo-background-opacity: 0;
+  --mo-glass-tint: rgba(255, 255, 255, 0.4);
+
+  body {
+    background-color: transparent;
+  }
+}
+
+/* Windows 11 background material: the OS draws the blur behind the window,
+   so the renderer keeps its own chrome lighter instead of double tinting. */
+.app-material-acrylic {
+  --mo-glass-background: rgba(255, 255, 255, 0.38);
+  --mo-glass-chrome-background: rgba(255, 255, 255, 0.26);
+  --mo-glass-overlay-background: rgba(252, 253, 255, 0.68);
+}
+
+.draggable {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.non-draggable {
+  -webkit-app-region: no-drag;
+}
+
+.aside {
+  background-color: $--aside-background;
+  color: $--aside-text-color;
+}
+
+.subnav {
+  background-color: $--subnav-background;
+  color: $--subnav-text-color;
+}
+
+.main {
+  background-color: $--main-background;
+  /* A page is only ever taller than the window, never wider: any horizontal
+     scrollbar here is a layout leak, so it is clipped rather than shown. */
+  overflow-x: hidden;
+}
+
+/* Element UI's main pane scrolls by default, which is what put a horizontal
+   scrollbar on the pages. */
+.el-main {
+  overflow-x: hidden;
+}
+
+/* Surfaces
+--------------------------
+   Panels are large glass planes: lightly tinted, softly separated from the
+   ambient background, never a hard rectangle. `.subnav` and `.main` are
+   panels too, so they only add the edge that separates them.
+-------------------------- */
+.panel,
+.subnav,
+.main {
+  @include mo-glass-chrome();
+}
+
+.subnav {
+  border-right: 1px solid var(--mo-glass-border);
+}
+
+.main {
+  border-left: 1px solid var(--mo-glass-border);
+}
+
+/* A soft vertical falloff instead of a hard header underline */
+.panel .panel-header {
+  position: relative;
+  padding: 44px 0 12px;
+  margin: 0 16px;
+  border-bottom: none;
+  user-select: none;
+  h4 {
+    margin: 0;
+    color: $--panel-title-color;
+    font-size: 16px;
+    font-weight: normal;
+    line-height: 24px;
+  }
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background-image: linear-gradient(
+      90deg,
+      rgba(var(--mo-primary-rgb), 0.42),
+      var(--mo-glass-border) 42%,
+      transparent
+    );
+  }
+}
+
+.subnav-inner {
+  margin-top: 44px;
+  padding: 0 16px;
+  user-select: none;
+
+  h3 {
+    font-size: 16px;
+    color: $--subnav-title-color;
+    font-weight: normal;
+    line-height: 24px;
+    margin: 0 0 28px;
+  }
+
+  ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    cursor: default;
+
+    li {
+      margin-bottom: 8px;
+      padding: 8px 10px;
+      font-size: 0;
+      line-height: 20px;
+      border-radius: $mo-radius-sm;
+      border: 1px solid transparent;
+      cursor: pointer;
+      /* Colour only, for the same reason as the rail: sideways travel in a fixed
+         navigation reads as instability. */
+      transition: background-color $mo-duration-fast $mo-ease-standard,
+        border-color $mo-duration-fast $mo-ease-standard,
+        color $mo-duration-fast $mo-ease-standard;
+
+      i,
+      span {
+        display: inline-block;
+        vertical-align: middle;
+        font-size: 14px;
+      }
+
+      &:hover,
+      &.active {
+        background-color: $--subnav-active-background;
+
+        i,
+        span,
+        svg {
+          color: $--subnav-active-text-color;
+        }
+      }
+
+      &.active {
+        border-color: rgba(var(--mo-primary-rgb), 0.24);
+      }
+    }
+  }
+}
+
+.subnav-icon {
+  padding: 2px;
+  height: 16px;
+  margin-right: 12px;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.content {
+  padding: 0;
+}
+
+.panel {
+  .panel-content {
+    position: relative;
+    height: 100%;
+  }
+  /* Task/Preference pages keep their insets on inner wrappers (.task-list,
+     .form-preference), so this reset applies to them only. The dashboard
+     carries its page inset on .panel-content itself and this rule — same
+     specificity but injected later by the theme bundle — used to zero it
+     out, leaving the cards flush with the window edges. */
+  .panel-content:not(.dashboard-content) {
+    padding: 0;
+  }
+}
+.form-actions {
+  background: $--form-actions-background;
+}
+
+.mo-table-wrapper {
+  border: 1px solid $--table-border-color;
+  border-bottom: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  .el-table th {
+    padding: 2px 0;
+  }
+}
+
+.graphic-box {
+  padding: 0.5rem 0.375rem;
+  margin-bottom: 1.5rem;
+  font-size: 0;
+  line-height: 0;
+  border: 1px solid $--task-detail-box-border;
+  border-radius: $--border-radius-base;
+  &> svg {
+    display: block;
+    margin: 0 auto;
+  }
+}
+
+.form-static-value {
+  word-break: break-all;
+  color: $--input-font-color;
+}
+
+@media only screen and (max-width:567px) {
+  .hidden-xs-only {
+    display:none !important
+  }
+}
+
+/* Page inset. Every page shares the same left and right margin so switching
+   between them never shifts the content sideways. It loosens further once the
+   window is wide enough to afford it. */
+@media only screen and (min-width: 568px) {
+  .panel {
+    .panel-header {
+      margin-left: 80px;
+      margin-right: 80px;
+    }
+  }
+  .task-list {
+    padding-left: 80px;
+    padding-right: 80px;
+  }
+  .form-preference {
+    padding-left: 80px;
+    padding-right: 80px;
+  }
+  .form-actions {
+    padding: 24px 80px;
+  }
+  .mo-speedometer {
+    right: 64px;
+  }
+  .hidden-sm-and-up {
+    display: none !important;
+  }
+}
+
+@media only screen and (min-width: 1280px) {
+  .panel {
+    .panel-header {
+      margin-left: 96px;
+      margin-right: 96px;
+    }
+  }
+  .task-list {
+    padding-left: 96px;
+    padding-right: 96px;
+  }
+  .form-preference {
+    padding-left: 96px;
+    padding-right: 96px;
+  }
+  .form-actions {
+    padding: 24px 96px;
+  }
+  .mo-speedometer {
+    right: 80px;
+  }
+}
+@media only screen and (min-width: 568px) and (max-width: 991px) {
+  .hidden-sm-only {
+    display: none !important;
+  }
+}
+
+@media only screen and (max-width: 791px) {
+  .hidden-sm-and-down {
+    display: none !important;
+  }
+}
+
+@media only screen and (min-width: 792px) {
+  .hidden-md-and-up {
+    display: none !important;
+  }
+}

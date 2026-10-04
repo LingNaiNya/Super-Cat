@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Super Cat</title>
+    <% if (htmlWebpackPlugin.options.nodeModules) { %>
+      <!-- Add `node_modules/` to global paths so `require` works properly in development -->
+      <script>
+        require('module').globalPaths.push('<%= htmlWebpackPlugin.options.nodeModules.replace(/\\/g, '\\\\') %>')
+      </script>
+    <% } %>
+  </head>
+
+  <style>
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+    }
+    body {
+      background-color: #eef0f7;
+      /* Same corner wash as #app: body paints behind the content, so any
+         sliver the OS leaves exposed around the window edge (native corner
+         rounding, macOS transparent margins) carries the ambient tint
+         instead of a bare colour. */
+      background-image:
+        radial-gradient(circle at 0% 0%, rgba(91, 91, 250, 0.5), rgba(91, 91, 250, 0) 36%),
+        radial-gradient(circle at 100% 0%, rgba(168, 85, 247, 0.4), rgba(168, 85, 247, 0) 36%),
+        radial-gradient(circle at 0% 100%, rgba(34, 211, 238, 0.38), rgba(34, 211, 238, 0) 36%),
+        radial-gradient(circle at 100% 100%, rgba(52, 211, 153, 0.32), rgba(52, 211, 153, 0) 36%);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    #app {
+      height: 100%;
+      /* No border-radius here: the OS rounds the whole window surface
+         (DWM ~8px on Windows, AppKit on macOS), so the content must stay
+         square and break on the same arc as the native frame. A content
+         radius larger than the native one leaves a tinted crescent at
+         every corner. */
+      overflow: hidden;
+      background-image:
+        radial-gradient(circle at 0% 0%, rgba(91, 91, 250, 0.5), rgba(91, 91, 250, 0) 36%),
+        radial-gradient(circle at 100% 0%, rgba(168, 85, 247, 0.4), rgba(168, 85, 247, 0) 36%),
+        radial-gradient(circle at 0% 100%, rgba(34, 211, 238, 0.38), rgba(34, 211, 238, 0) 36%),
+        radial-gradient(circle at 100% 100%, rgba(52, 211, 153, 0.32), rgba(52, 211, 153, 0) 36%);
+    }
+    .skeleton-aside {
+      background-color: rgba(18, 18, 28, 0.72);
+      backdrop-filter: blur(20px) saturate(165%);
+      -webkit-backdrop-filter: blur(20px) saturate(165%);
+      width: 78px;
+    }
+    .skeleton-subnav {
+      background-color: rgba(255, 255, 255, 0.46);
+      backdrop-filter: blur(12px) saturate(165%);
+      -webkit-backdrop-filter: blur(12px) saturate(165%);
+      width: 200px;
+      border-right: 1px solid rgba(255, 255, 255, 0.6);
+    }
+    .skeleton-main {
+      background-color: rgba(255, 255, 255, 0.58);
+      backdrop-filter: blur(12px) saturate(165%);
+      -webkit-backdrop-filter: blur(12px) saturate(165%);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background-color: #14151d;
+        background-image:
+          radial-gradient(circle at 0% 0%, rgba(124, 124, 255, 0.4), rgba(124, 124, 255, 0) 36%),
+          radial-gradient(circle at 100% 0%, rgba(168, 85, 247, 0.3), rgba(168, 85, 247, 0) 36%),
+          radial-gradient(circle at 0% 100%, rgba(34, 211, 238, 0.26), rgba(34, 211, 238, 0) 36%),
+          radial-gradient(circle at 100% 100%, rgba(52, 211, 153, 0.22), rgba(52, 211, 153, 0) 36%);
+      }
+      #app {
+        background-image:
+          radial-gradient(circle at 0% 0%, rgba(124, 124, 255, 0.4), rgba(124, 124, 255, 0) 36%),
+          radial-gradient(circle at 100% 0%, rgba(168, 85, 247, 0.3), rgba(168, 85, 247, 0) 36%),
+          radial-gradient(circle at 0% 100%, rgba(34, 211, 238, 0.26), rgba(34, 211, 238, 0) 36%),
+          radial-gradient(circle at 100% 100%, rgba(52, 211, 153, 0.22), rgba(52, 211, 153, 0) 36%);
+      }
+      .skeleton-aside {
+        background-color: rgba(10, 10, 16, 0.78);
+      }
+      .skeleton-subnav {
+        background-color: rgba(32, 34, 48, 0.5);
+        border-right-color: rgba(255, 255, 255, 0.08);
+      }
+      .skeleton-main {
+        background-color: rgba(32, 34, 48, 0.42);
+      }
+    }
+  </style>
+
+  <body>
+    <div id="app">
+      <div class="title-bar"></div>
+      <section class="el-container" id="container">
+        <aside class="el-aside skeleton-aside hidden-sm-and-down">
+        </aside>
+        <aside class="el-aside skeleton-subnav hidden-xs-only">
+        </aside>
+        <section class="el-container skeleton-main">
+        </section>
+      </section>
+    </div>
+    <!-- Set `__static` path to static files in production -->
+    <% if (!htmlWebpackPlugin.options.isBrowser && !htmlWebpackPlugin.options.isDev) { %>
+      <script>
+        window.__static = require('path').join(__dirname, '/static').replace(/\\/g, '\\\\')
+      </script>
+    <% } %>
+
+    <!-- webpack builds are automatically injected -->
+  </body>
+</html>

@@ -96,7 +96,7 @@ If you are interested in participating in joint development, PR and Forks are we
 
 ## 🌍 Internationalization
 
-Translations into versions for other languages are welcome 🧐! Please read the [translation guide](./CONTRIBUTING.md#-translation-guide) before starting translations.
+Translations into versions for other languages are welcome 🧐!
 
 | Key   | Name                | Status       |
 |-------|:--------------------|:-------------|

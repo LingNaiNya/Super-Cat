@@ -89,7 +89,7 @@ npm run dev
 npm run build
 ```
 
-完成之后可以在项目的 `release` 目录看到编译打包好的应用文件。完整的发版流程见 [RELEASE.md](./RELEASE.md)。
+完成之后可以在项目的 `release` 目录看到编译打包好的应用文件。
 
 ## 🛠 技术栈
 

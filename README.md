@@ -82,7 +82,7 @@ npm run dev
 npm run build
 ```
 
-The packaged application will be found in the project's `release` directory. See [RELEASE.md](./RELEASE.md) for the full release workflow.
+The packaged application will be found in the project's `release` directory.
 
 ## 🛠 Technology Stack
 

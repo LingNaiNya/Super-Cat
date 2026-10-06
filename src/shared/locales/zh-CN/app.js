@@ -8,6 +8,7 @@ export default {
   'checking-for-updates': '正在检查更新...',
   'check-for-updates-title': '检查更新',
   'update-available-message': '发现新版本，是否现在更新？',
+  'update-available-dev-message': '发现新版本 {{version}}。开发模式只验证检查流程，不执行下载安装。',
   'update-not-available-message': '已是最新版',
   'update-downloaded-message': '更新下载完成，应用程序将退出并开始更新...',
   'update-error-message': '检查更新失败',

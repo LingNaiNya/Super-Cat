@@ -10,6 +10,9 @@ import { getI18n } from '../ui/Locale'
 if (is.dev()) {
   // __dirname = dist/electron, repo root is two levels up
   autoUpdater.updateConfigPath = resolve(__dirname, '../../app-update.yml')
+  // electron-updater 6.x skips checkForUpdates entirely unless the app is
+  // packaged; this flag forces it to use the dev config above
+  autoUpdater.forceDevUpdateConfig = true
 }
 
 export default class UpdateManager extends EventEmitter {
@@ -68,8 +71,23 @@ export default class UpdateManager extends EventEmitter {
     this.emit('checking')
   }
 
-  updateAvailable (event, info) {
+  // electron-updater emits (info) / (error, message) — not Electron's
+  // native (event, info) shape. Keep the first argument only.
+  updateAvailable (info) {
     this.emit('update-available', info)
+    if (is.dev()) {
+      // Dev verifies the check flow only: a download here would run a real
+      // installer over the installed app. Close out like a declined prompt.
+      this.isChecking = false
+      logger.info(`[Super Cat] update available (dev, download disabled): ${info.version}`)
+      dialog.showMessageBox({
+        type: 'info',
+        title: this.i18n.t('app.check-for-updates-title'),
+        message: this.i18n.t('app.update-available-dev-message', { version: info.version })
+      })
+      this.emit('update-cancelled', info)
+      return
+    }
     dialog.showMessageBox({
       type: 'info',
       title: this.i18n.t('app.check-for-updates-title'),
@@ -80,12 +98,13 @@ export default class UpdateManager extends EventEmitter {
       if (response === 0) {
         this.updater.downloadUpdate()
       } else {
+        this.isChecking = false
         this.emit('update-cancelled', info)
       }
     })
   }
 
-  updateNotAvailable (event, info) {
+  updateNotAvailable (info) {
     this.isChecking = false
     this.emit('update-not-available', info)
   }
@@ -103,31 +122,34 @@ export default class UpdateManager extends EventEmitter {
     this.emit('download-progress', event)
   }
 
-  updateDownloaded (event, info) {
+  updateDownloaded (info) {
     this.emit('update-downloaded', info)
-    this.updater.logger.log(`Update Downloaded: ${info}`)
+    logger.info(`[Super Cat] update downloaded: ${info && info.version}`)
     dialog.showMessageBox({
       title: this.i18n.t('app.check-for-updates-title'),
       message: this.i18n.t('app.update-downloaded-message')
     }).then(_ => {
       this.isChecking = false
+      // Installation is driven by the listener (Application) so it can wait
+      // for a full engine shutdown first — see install() below
       this.emit('will-updated')
-      setTimeout(() => {
-        this.updater.quitAndInstall()
-      }, 200)
     })
+  }
+
+  install () {
+    this.updater.quitAndInstall()
   }
 
   updateCancelled () {
     this.isChecking = false
   }
 
-  updateError (event, error) {
+  updateError (error) {
     this.isChecking = false
     this.emit('update-error', error)
     const msg = (error == null)
       ? this.i18n.t('app.update-error-message')
-      : (error.stack || error).toString()
+      : ((error && error.stack) || error).toString()
 
     // Failures are log-only: no error dialog after checking for updates
     this.updater.logger.warn(`[Super Cat] update-error: ${msg}`)

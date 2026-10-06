@@ -687,6 +687,9 @@ export default class Application extends EventEmitter {
     this.updateManager.on('will-updated', async (event) => {
       this.windowManager.setWillQuit(true)
       await this.stopAllSettled()
+      // Install only after the engine has fully shut down — the old fixed
+      // 200ms timer raced the aria2c teardown and could hit locked files
+      this.updateManager.install()
     })
 
     this.updateManager.on('update-error', (event) => {

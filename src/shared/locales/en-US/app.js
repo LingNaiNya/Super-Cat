@@ -8,6 +8,7 @@ export default {
   'checking-for-updates': 'Checking for updates ...',
   'check-for-updates-title': 'Check for Updates',
   'update-available-message': 'A newer version of Super Cat is available, update now?',
+  'update-available-dev-message': 'A new version {{version}} is available. Dev mode only verifies the check flow — download and install are disabled.',
   'update-not-available-message': 'You are up-to-date!',
   'update-downloaded-message': 'Ready to install...',
   'update-error-message': 'Update Error',

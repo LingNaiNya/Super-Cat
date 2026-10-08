@@ -274,6 +274,30 @@ export const SUB_SUFFIXES = [
   '.sub'
 ]
 
+/* P2P interconnect (invite-code groups, virtual-LAN forwarding to peers). */
+export const P2P_DEFAULT_LISTEN_PORT = 26900
+
+export const P2P_ROLE = {
+  OWNER: 'owner',
+  MEMBER: 'member'
+}
+
+export const P2P_STATUS = {
+  IDLE: 'idle',
+  STARTING: 'starting',
+  JOINING: 'joining',
+  JOINED: 'joined',
+  REJECTED: 'rejected',
+  KICKED: 'kicked',
+  ERROR: 'error'
+}
+
+export const P2P_JOIN_MODE = {
+  JOIN: 'join',
+  MEMBER: 'member',
+  DATA: 'data'
+}
+
 /* Speed-limiter gears, shared by the dashboard switcher card and the
    floating speedometer. `limit` uses aria2's own K/M suffix format — the
    same shape the preference form stores — and 0 means unlimited. */

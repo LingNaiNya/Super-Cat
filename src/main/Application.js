@@ -23,6 +23,7 @@ import { setupLocaleManager } from './ui/Locale'
 import Engine from './core/Engine'
 import EngineClient from './core/EngineClient'
 import UPnPManager from './core/UPnPManager'
+import P2PManager from './core/p2p/P2PManager'
 import AutoLaunchManager from './core/AutoLaunchManager'
 import UpdateManager from './core/UpdateManager'
 import EnergyManager from './core/EnergyManager'
@@ -59,6 +60,8 @@ export default class Application extends EventEmitter {
     this.startEngine()
 
     this.initEngineClient()
+
+    this.initP2PManager()
 
     this.initTouchBarManager()
 
@@ -186,6 +189,28 @@ export default class Application extends EventEmitter {
       port,
       secret
     })
+  }
+
+  initP2PManager () {
+    this.p2pManager = new P2PManager({
+      configManager: this.configManager,
+      engineClient: this.engineClient,
+      upnpManager: this.upnp
+    })
+
+    this.p2pManager.on('state-change', (state) => {
+      this.sendCommandToAll('application:p2p-state', state)
+    })
+
+    this.p2pManager.on('task-received', (payload) => {
+      this.sendCommandToAll('application:p2p-task-received', payload)
+    })
+
+    this.p2pManager.on('notify', (payload) => {
+      this.sendCommandToAll('application:p2p-notify', payload)
+    })
+
+    this.p2pManager.init()
   }
 
   initAutoLaunchManager () {
@@ -531,7 +556,8 @@ export default class Application extends EventEmitter {
         this.stopEngine(),
         this.shutdownUPnPManager(),
         this.energyManager.stopPowerSaveBlocker(),
-        this.trayManager.destroy()
+        this.trayManager.destroy(),
+        this.p2pManager ? this.p2pManager.shutdown() : Promise.resolve()
       ]
 
       return promises
@@ -979,5 +1005,30 @@ export default class Application extends EventEmitter {
       const result = await getDiskSpace(directory)
       return result
     })
+
+    const p2pInvoke = (fn) => async (event, payload) => {
+      try {
+        const result = await fn(payload || {})
+        return { ok: true, result: result === undefined ? null : result, state: this.p2pManager.getState() }
+      } catch (err) {
+        logger.warn('[Super Cat] p2p invoke failed:', err.message)
+        return { ok: false, error: err.message, state: this.p2pManager.getState() }
+      }
+    }
+
+    ipcMain.handle('p2p:get-state', async () => {
+      return { ok: true, state: this.p2pManager.getState() }
+    })
+    ipcMain.handle('p2p:create-group', p2pInvoke((payload) => this.p2pManager.createGroup(payload)))
+    ipcMain.handle('p2p:join-group', p2pInvoke((payload) => this.p2pManager.joinGroup(payload)))
+    ipcMain.handle('p2p:approve', p2pInvoke((payload) => this.p2pManager.approveJoin(payload.fp)))
+    ipcMain.handle('p2p:reject', p2pInvoke((payload) => this.p2pManager.rejectJoin(payload.fp)))
+    ipcMain.handle('p2p:kick', p2pInvoke((payload) => this.p2pManager.kickMember(payload.fp)))
+    ipcMain.handle('p2p:reset-code', p2pInvoke(() => this.p2pManager.resetInviteCode()))
+    ipcMain.handle('p2p:leave', p2pInvoke(() => this.p2pManager.leaveGroup()))
+    ipcMain.handle('p2p:push-task', p2pInvoke((payload) => this.p2pManager.pushTask(payload)))
+    ipcMain.handle('p2p:update-settings', p2pInvoke((payload) => this.p2pManager.updateSettings(payload)))
+    ipcMain.handle('p2p:reset-error', p2pInvoke(() => this.p2pManager.resetError()))
+    ipcMain.handle('p2p:speed-test', p2pInvoke((payload) => this.p2pManager.speedTest(payload.target)))
   }
 }

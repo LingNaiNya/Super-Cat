@@ -57,6 +57,7 @@
   import '@/components/Icons/menu-task'
   import '@/components/Icons/menu-add'
   import '@/components/Icons/menu-dashboard'
+  import '@/components/Icons/menu-p2p'
   import '@/components/Icons/menu-preference'
   import '@/components/Icons/menu-about'
 
@@ -97,6 +98,12 @@
             icon: 'menu-dashboard',
             label: this.$t('subnav.dashboard'),
             action: () => this.nav('/dashboard')
+          },
+          {
+            key: 'p2p',
+            icon: 'menu-p2p',
+            label: this.$t('subnav.p2p'),
+            action: () => this.nav('/p2p')
           },
           {
             key: 'preference',

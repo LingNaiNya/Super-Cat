@@ -83,6 +83,28 @@ export default class UPnPManager {
     })
   }
 
+  /**
+   * The router's own view of our public address (IGD GetExternalIPAddress).
+   * This is what lets a no-server invite code embed a reachable anchor.
+   */
+  externalIp () {
+    this.init()
+
+    return new Promise((resolve, reject) => {
+      try {
+        client.externalIp((err, ip) => {
+          if (err || !ip) {
+            reject(new Error(err ? err.message : 'no external ip'))
+            return
+          }
+          resolve(ip)
+        })
+      } catch (err) {
+        reject(err)
+      }
+    })
+  }
+
   closeClient () {
     if (!client) {
       return

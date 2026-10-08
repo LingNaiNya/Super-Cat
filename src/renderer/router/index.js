@@ -30,6 +30,11 @@ export default new Router({
           component: require('@/components/Dashboard/Index').default
         },
         {
+          path: '/p2p',
+          name: 'p2p',
+          component: require('@/components/P2P/Index').default
+        },
+        {
           path: '/preference',
           name: 'preference',
           component: require('@/components/Preference/Index').default,

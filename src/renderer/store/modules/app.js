@@ -41,6 +41,9 @@ const getters = {
     if (path.startsWith('/preference')) {
       return 'preference'
     }
+    if (path.startsWith('/p2p')) {
+      return 'p2p'
+    }
     if (path.startsWith('/task') || path === '/') {
       return 'task'
     }

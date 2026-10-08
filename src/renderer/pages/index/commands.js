@@ -172,6 +172,30 @@ const notifyUpdateLatest = () => {
   Message.info(i18n.t('app.update-not-available-message'))
 }
 
+const updateP2pState = (state) => {
+  store.dispatch('p2p/updateState', state)
+}
+
+const notifyP2pTaskReceived = (payload = {}) => {
+  const { from, count = 0 } = payload
+  Message.success(i18n.t('p2p.task-received', { from, count }))
+}
+
+const notifyP2p = (payload = {}) => {
+  const { type = 'info', message, key } = payload
+  const text = message || (key ? i18n.t(`p2p.${key}`) : '')
+  if (!text) {
+    return
+  }
+  if (type === 'error') {
+    Message.error(text)
+  } else if (type === 'success') {
+    Message.success(text)
+  } else {
+    Message.info(text)
+  }
+}
+
 commands.register('application:task-list', navigateTaskList)
 commands.register('application:preferences', navigatePreferences)
 commands.register('application:about', showAboutPanel)
@@ -194,3 +218,7 @@ commands.register('application:notify-update-latest', notifyUpdateLatest)
 commands.register('application:update-system-theme', updateSystemTheme)
 commands.register('application:update-theme', updateTheme)
 commands.register('application:update-tray-focused', updateTrayFocused)
+
+commands.register('application:p2p-state', updateP2pState)
+commands.register('application:p2p-task-received', notifyP2pTaskReceived)
+commands.register('application:p2p-notify', notifyP2p)

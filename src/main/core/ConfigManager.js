@@ -11,10 +11,12 @@ import {
   APP_RUN_MODE,
   APP_THEME,
   EMPTY_STRING,
+  ENGINE_RPC_PORT,
   IP_VERSION,
   LOGIN_SETTING_OPTIONS,
   NGOSANG_TRACKERS_BEST_IP_URL_CDN,
-  NGOSANG_TRACKERS_BEST_URL_CDN
+  NGOSANG_TRACKERS_BEST_URL_CDN,
+  P2P_DEFAULT_LISTEN_PORT
 } from '@shared/constants'
 import { CHROME_UA } from '@shared/ua'
 import { separateConfig } from '@shared/utils'
@@ -31,6 +33,7 @@ export default class ConfigManager {
   init () {
     this.initSystemConfig()
     this.initUserConfig()
+    this.initP2PConfig()
   }
 
   /**
@@ -136,6 +139,32 @@ export default class ConfigManager {
     this.fixUserConfig()
   }
 
+  initP2PConfig () {
+    this.p2pConfig = new Store({
+      name: 'p2p',
+      defaults: {
+        enabled: false,
+        identity: null,
+        role: '',
+        gid: '',
+        sec: '',
+        'group-name': '',
+        'member-seq': 0,
+        'owner-pub': '',
+        'owner-ep': null,
+        members: [],
+        banned: [],
+        'vip-map': {},
+        'listen-port': P2P_DEFAULT_LISTEN_PORT,
+        'open-ports': [ENGINE_RPC_PORT],
+        'receive-task-push': true,
+        'vip-forward': true,
+        'manual-endpoint': null,
+        'last-endpoint': null
+      }
+    })
+  }
+
   fixSystemConfig () {
     // Remove aria2c unrecognized options
     const { others } = separateConfig(this.systemConfig.store)
@@ -201,5 +230,6 @@ export default class ConfigManager {
   reset () {
     this.systemConfig.clear()
     this.userConfig.clear()
+    this.p2pConfig.clear()
   }
 }

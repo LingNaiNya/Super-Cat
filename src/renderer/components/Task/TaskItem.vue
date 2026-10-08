@@ -61,6 +61,9 @@
     },
     methods: {
       onDbClick () {
+        if (this.task.isUpdateTask) {
+          return
+        }
         const { status } = this.task
         const { COMPLETE, WAITING, PAUSED } = TASK_STATUS
         if (status === COMPLETE) {

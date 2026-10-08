@@ -8,7 +8,7 @@
     <div
       v-for="(item, index) in taskList"
       :key="item.gid"
-      :attr="item.gid"
+      :attr="item.isUpdateTask ? undefined : item.gid"
       :class="getItemClass(item)"
       :style="getItemStyle(index)"
     >

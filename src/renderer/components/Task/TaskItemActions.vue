@@ -1,5 +1,10 @@
 <template>
-  <ul :key="task.gid" class="task-item-actions" v-on:dblclick.stop="() => null">
+  <ul
+    :key="task.gid"
+    class="task-item-actions"
+    v-if="taskActions.length > 0"
+    v-on:dblclick.stop="() => null"
+  >
     <li v-for="action in taskActions" :key="action" class="task-item-action">
       <i v-if="action ==='PAUSE'" @click.stop="onPauseClick">
         <mo-icon name="task-pause-line" width="14" height="14" />
@@ -115,6 +120,11 @@
         return result
       },
       taskActions () {
+        // The update row is not an aria2 task: pause/delete/copy-link would
+        // all fail, so it renders without action buttons
+        if (this.task.isUpdateTask) {
+          return []
+        }
         const { taskStatus, taskCommonActions } = this
         const actions = taskActionsMap[taskStatus] || []
         const result = [...actions, ...taskCommonActions].reverse()

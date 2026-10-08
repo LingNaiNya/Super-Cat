@@ -172,6 +172,26 @@ const notifyUpdateLatest = () => {
   Message.info(i18n.t('app.update-not-available-message'))
 }
 
+const updateDownloadStart = (payload = {}) => {
+  store.dispatch('task/startUpdateDownload', payload)
+}
+
+const updateDownloadProgress = (payload = {}) => {
+  store.dispatch('task/updateUpdateDownload', payload)
+}
+
+const updateDownloadFinished = () => {
+  store.dispatch('task/finishUpdateDownload')
+}
+
+const updateDownloadCancelled = () => {
+  store.dispatch('task/clearUpdateDownload')
+}
+
+const updateDownloadError = () => {
+  store.dispatch('task/clearUpdateDownload')
+}
+
 const updateP2pState = (state) => {
   store.dispatch('p2p/updateState', state)
 }
@@ -215,6 +235,11 @@ commands.register('application:select-all-task', selectAllTask)
 commands.register('application:update-preference-config', fetchPreference)
 commands.register('application:notify-update-error', notifyUpdateError)
 commands.register('application:notify-update-latest', notifyUpdateLatest)
+commands.register('application:update-download-start', updateDownloadStart)
+commands.register('application:update-download-progress', updateDownloadProgress)
+commands.register('application:update-download-finished', updateDownloadFinished)
+commands.register('application:update-download-cancelled', updateDownloadCancelled)
+commands.register('application:update-download-error', updateDownloadError)
 commands.register('application:update-system-theme', updateSystemTheme)
 commands.register('application:update-theme', updateTheme)
 commands.register('application:update-tray-focused', updateTrayFocused)

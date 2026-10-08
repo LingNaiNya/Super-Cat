@@ -30,6 +30,10 @@ export default class UpdateManager extends EventEmitter {
       checkEnable: this.options.autoCheck,
       userCheck: false
     }
+    // Meta of the update package currently being downloaded (null when idle);
+    // merged into every download-progress payload so the renderer can show
+    // the download as a task row even if the start message was missed
+    this.downloadMeta = null
     this.init()
   }
 
@@ -96,12 +100,27 @@ export default class UpdateManager extends EventEmitter {
       cancelId: 1
     }).then(({ response }) => {
       if (response === 0) {
-        this.updater.downloadUpdate()
+        this.startDownload(info)
       } else {
         this.isChecking = false
         this.emit('update-cancelled', info)
       }
     })
+  }
+
+  startDownload (info) {
+    const file = (info.files && info.files[0]) || {}
+    const fileName = String(file.url || '').split('/').pop() ||
+      (info.version ? `Super-Cat-Setup-${info.version}.exe` : '')
+    this.downloadMeta = {
+      version: info.version || '',
+      fileName,
+      totalBytes: Number(file.size) || 0
+    }
+    // The renderer shows this as a task row in the download list
+    this.emit('update-download-start', this.downloadMeta)
+    this.updater.downloadUpdate()
+      .catch((err) => logger.warn('[Super Cat] downloadUpdate failed:', err))
   }
 
   updateNotAvailable (info) {
@@ -119,10 +138,11 @@ export default class UpdateManager extends EventEmitter {
    * transferred
    */
   updateDownloadProgress (event) {
-    this.emit('download-progress', event)
+    this.emit('download-progress', { ...event, ...(this.downloadMeta || {}) })
   }
 
   updateDownloaded (info) {
+    this.downloadMeta = null
     this.emit('update-downloaded', info)
     logger.info(`[Super Cat] update downloaded: ${info && info.version}`)
     dialog.showMessageBox({
@@ -142,16 +162,21 @@ export default class UpdateManager extends EventEmitter {
 
   updateCancelled () {
     this.isChecking = false
+    this.downloadMeta = null
   }
 
   updateError (error) {
+    const wasDownloading = !!this.downloadMeta
+    this.downloadMeta = null
     this.isChecking = false
-    this.emit('update-error', error)
+    this.emit('update-error', error, wasDownloading)
     const msg = (error == null)
       ? this.i18n.t('app.update-error-message')
       : ((error && error.stack) || error).toString()
 
-    // Failures are log-only: no error dialog after checking for updates
+    // Failures are log-only: no error dialog after checking for updates.
+    // A failed download is exempt — the row disappears from the task list,
+    // so it must surface as a toast instead of vanishing silently.
     this.updater.logger.warn(`[Super Cat] update-error: ${msg}`)
   }
 }

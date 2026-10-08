@@ -1,6 +1,27 @@
 import api from '@/api'
-import { EMPTY_STRING, TASK_STATUS } from '@shared/constants'
+import { EMPTY_STRING, TASK_STATUS, UPDATE_TASK_GID } from '@shared/constants'
 import { checkTaskIsBT, intersection } from '@shared/utils'
+
+/**
+ * Build the synthetic row that mirrors the electron-updater download in the
+ * active task list. Shaped like an aria2 task so TaskItem renders it with no
+ * special cases; `isUpdateTask` only gates selection and action buttons.
+ */
+function buildUpdateTask (meta = {}, status = TASK_STATUS.ACTIVE) {
+  const { version = '', fileName = '', totalBytes = 0 } = meta
+  const name = fileName || (version ? `Super-Cat-Setup-${version}.exe` : EMPTY_STRING)
+  return {
+    gid: UPDATE_TASK_GID,
+    isUpdateTask: true,
+    status,
+    totalLength: Number(totalBytes) || 0,
+    completedLength: 0,
+    downloadSpeed: 0,
+    uploadSpeed: 0,
+    connections: 1,
+    files: [{ path: name, uris: [] }]
+  }
+}
 
 const state = {
   currentList: 'active',
@@ -12,6 +33,7 @@ const state = {
   currentTaskPeers: [],
   seedingList: [],
   taskList: [],
+  updateTask: null,
   selectedGidList: []
 }
 
@@ -48,6 +70,27 @@ const mutations = {
   },
   UPDATE_CURRENT_TASK_PEERS (state, peers) {
     state.currentTaskPeers = peers
+  },
+  UPDATE_UPDATE_TASK (state, task) {
+    state.updateTask = task
+    // Keep the rendered row in sync immediately: waiting for the aria2 poll
+    // (up to 6s idle interval) would freeze progress and leave a stale row
+    // after finish/clear until the next fetchList
+    if (state.currentList !== 'active') {
+      return
+    }
+    const idx = state.taskList.findIndex((item) => item.gid === UPDATE_TASK_GID)
+    if (!task) {
+      if (idx !== -1) {
+        state.taskList.splice(idx, 1)
+      }
+      return
+    }
+    if (idx === -1) {
+      state.taskList.unshift(task)
+    } else {
+      state.taskList.splice(idx, 1, task)
+    }
   }
 }
 
@@ -60,19 +103,27 @@ const actions = {
   fetchList ({ commit, state }) {
     return api.fetchTaskList({ type: state.currentList })
       .then((data) => {
-        commit('UPDATE_TASK_LIST', data)
+        // The update download is not an aria2 task; prepend its synthetic row
+        // so the progress stays visible while the list polls for real tasks
+        const list = (state.currentList === 'active' && state.updateTask)
+          ? [state.updateTask, ...data]
+          : data
+        commit('UPDATE_TASK_LIST', list)
 
         const { selectedGidList } = state
-        const gids = data.map((task) => task.gid)
-        const list = intersection(selectedGidList, gids)
-        commit('UPDATE_SELECTED_GID_LIST', list)
+        const gids = list.map((task) => task.gid)
+        const selected = intersection(selectedGidList, gids)
+        commit('UPDATE_SELECTED_GID_LIST', selected)
       })
   },
   selectTasks ({ commit }, list) {
-    commit('UPDATE_SELECTED_GID_LIST', list)
+    const gidList = list.filter((gid) => gid !== UPDATE_TASK_GID)
+    commit('UPDATE_SELECTED_GID_LIST', gidList)
   },
   selectAllTask ({ commit, state }) {
-    const gids = state.taskList.map((task) => task.gid)
+    const gids = state.taskList
+      .filter((task) => !task.isUpdateTask)
+      .map((task) => task.gid)
     commit('UPDATE_SELECTED_GID_LIST', gids)
   },
   fetchItem ({ dispatch }, gid) {
@@ -254,6 +305,43 @@ const actions = {
   purgeTaskRecord ({ dispatch }) {
     return api.purgeTaskRecord()
       .finally(() => dispatch('fetchList'))
+  },
+  startUpdateDownload ({ commit }, meta = {}) {
+    commit('UPDATE_UPDATE_TASK', buildUpdateTask(meta))
+  },
+  updateUpdateDownload ({ state, commit }, payload = {}) {
+    const { transferred = 0, total = 0, bytesPerSecond = 0, ...meta } = payload
+    const current = state.updateTask
+    if (current && current.status === TASK_STATUS.COMPLETE) {
+      return
+    }
+    // Upsert: progress messages carry the meta, so the row still appears
+    // even if the start message never reached this window
+    const task = current || buildUpdateTask(meta)
+    commit('UPDATE_UPDATE_TASK', {
+      ...task,
+      status: TASK_STATUS.ACTIVE,
+      totalLength: Number(total) || task.totalLength,
+      completedLength: Number(transferred) || task.completedLength,
+      downloadSpeed: Number(bytesPerSecond) || 0
+    })
+  },
+  finishUpdateDownload ({ state, commit }) {
+    if (!state.updateTask) {
+      return
+    }
+    const task = state.updateTask
+    const total = Number(task.totalLength) || Number(task.completedLength) || 0
+    commit('UPDATE_UPDATE_TASK', {
+      ...task,
+      status: TASK_STATUS.COMPLETE,
+      totalLength: total,
+      completedLength: total,
+      downloadSpeed: 0
+    })
+  },
+  clearUpdateDownload ({ commit }) {
+    commit('UPDATE_UPDATE_TASK', null)
   },
   toggleTask ({ dispatch }, task) {
     const { status } = task

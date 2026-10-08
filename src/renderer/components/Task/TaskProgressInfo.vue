@@ -90,6 +90,11 @@
       },
       remaining () {
         const { totalLength, completedLength, downloadSpeed } = this.task
+        // A zero speed makes the estimate infinite — hiding it beats
+        // showing "more than 1 day" while a download spins up
+        if (!downloadSpeed) {
+          return 0
+        }
         return timeRemaining(totalLength, completedLength, downloadSpeed)
       }
     },

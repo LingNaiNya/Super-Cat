@@ -682,9 +682,14 @@ export default class Application extends EventEmitter {
       this.configManager.setUserConfig('last-check-update-time', Date.now())
     })
 
+    this.updateManager.on('update-download-start', (meta) => {
+      this.sendCommandToAll('application:update-download-start', meta)
+    })
+
     this.updateManager.on('download-progress', (event) => {
       const win = this.windowManager.getWindow('index')
       win.setProgressBar(event.percent / 100)
+      this.sendCommandToAll('application:update-download-progress', event)
     })
 
     this.updateManager.on('update-not-available', (event) => {
@@ -701,6 +706,7 @@ export default class Application extends EventEmitter {
       this.trayManager.updateMenuItemEnabledState('app.check-for-updates', true)
       const win = this.windowManager.getWindow('index')
       win.setProgressBar(1)
+      this.sendCommandToAll('application:update-download-finished')
     })
 
     this.updateManager.on('update-cancelled', (event) => {
@@ -708,6 +714,7 @@ export default class Application extends EventEmitter {
       this.trayManager.updateMenuItemEnabledState('app.check-for-updates', true)
       const win = this.windowManager.getWindow('index')
       win.setProgressBar(-1)
+      this.sendCommandToAll('application:update-download-cancelled')
     })
 
     this.updateManager.on('will-updated', async (event) => {
@@ -718,11 +725,17 @@ export default class Application extends EventEmitter {
       this.updateManager.install()
     })
 
-    this.updateManager.on('update-error', (event) => {
+    this.updateManager.on('update-error', (event, wasDownloading) => {
       this.menuManager.updateMenuItemEnabledState('app.check-for-updates', true)
       this.trayManager.updateMenuItemEnabledState('app.check-for-updates', true)
+      if (wasDownloading) {
+        // Drop the update row from the task list and always surface a toast:
+        // the row vanishes, so silence would leave the user without a clue
+        this.sendCommandToAll('application:update-download-error')
+      }
       // Manual checks surface a toast; auto-check failures stay silent
-      if (this.updateManager.autoCheckData.userCheck) {
+      // unless the failure happened mid-download
+      if (this.updateManager.autoCheckData.userCheck || wasDownloading) {
         this.sendCommandToAll('application:notify-update-error')
       }
     })

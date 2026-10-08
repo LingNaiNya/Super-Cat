@@ -27,6 +27,10 @@ export const TASK_STATUS = {
   SEEDING: 'seeding'
 }
 
+// Synthetic gid of the app-update download row shown in the task list;
+// it mirrors electron-updater progress and is not an aria2 task
+export const UPDATE_TASK_GID = 'update-download'
+
 export const LOG_LEVELS = [
   'error',
   'warn',

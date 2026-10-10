@@ -16,9 +16,11 @@ export default {
   'loading': 'Loading…',
   'dismiss': 'Got it',
 
+  'hero-title': 'Super Cat Interconnect',
+  'hero-desc': 'Form a multi-device virtual LAN that links all your devices together.',
+
   'create-title': 'Create a group',
-  'create-desc': 'You become the owner: share the invite code, approve join requests. One code works for many people.',
-  'group-name-ph': 'Group name (optional)',
+  'create-desc': 'Creates “Super Cat 互联”: you become the owner — share the invite code, approve join requests. One code works for many people.',
   'create-action': 'Create group',
   'created': 'Group created — copy the invite code to share',
 
@@ -44,6 +46,7 @@ export default {
 
   'group-meta': '{{count}} members',
   'members-title': 'Members',
+  'members-empty': 'No one else here yet — share your invite code and the request will show up here.',
 
   'pending-name': 'New member',
   'pending-tag': 'pending',

@@ -16,14 +16,16 @@ export default {
   'loading': '加载中…',
   'dismiss': '知道了',
 
+  'hero-title': 'Super Cat 互联',
+  'hero-desc': '与其他设备组成一个多设备互联的虚拟局域网',
+
   'create-title': '创建群组',
-  'create-desc': '你将成为群主：生成邀请码发给朋友，对方申请后由你批准。一个码可多人使用。',
-  'group-name-ph': '群组名称（可选）',
+  'create-desc': '将创建「Super Cat 互联」群组您将担任管理员，其他设备通过邀请码向您发出加入请求以实现互联。',
   'create-action': '创建群组',
   'created': '群组已创建，请复制邀请码分享',
 
   'join-title': '加入群组',
-  'join-desc': '粘贴群主发来的邀请码，提交后等待群主批准。',
+  'join-desc': '输入管理员提供的邀请码以向群组管理员发出加入请求。',
   'code-ph': '粘贴邀请码',
   'join-action': '申请加入',
   'code-required': '请先粘贴邀请码',
@@ -44,6 +46,7 @@ export default {
 
   'group-meta': '{{count}} 名成员',
   'members-title': '成员',
+  'members-empty': '群里还没有其他成员，把邀请码发给朋友，等 TA 的申请出现在这里。',
 
   'pending-name': '新成员',
   'pending-tag': '待审批',

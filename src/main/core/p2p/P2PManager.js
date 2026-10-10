@@ -360,7 +360,7 @@ export default class P2PManager extends EventEmitter {
 
   /* ------------------------------------------------------------ group flows */
 
-  async createGroup ({ name = '' } = {}) {
+  async createGroup () {
     if (this.inGroup) {
       throw new Error('已经在一个群组中，请先退出')
     }
@@ -371,7 +371,7 @@ export default class P2PManager extends EventEmitter {
     this.cfg.set('role', P2P_ROLE.OWNER)
     this.cfg.set('gid', generateGroupId())
     this.cfg.set('sec', Identity.randomSecret())
-    this.cfg.set('group-name', name || `${this.selfName} 的群组`)
+    this.cfg.set('group-name', 'Super Cat 互联')
     this.cfg.set('members', [])
     this.cfg.set('banned', [])
     this.cfg.set('vip-map', {})

@@ -1032,7 +1032,7 @@ export default class Application extends EventEmitter {
     ipcMain.handle('p2p:get-state', async () => {
       return { ok: true, state: this.p2pManager.getState() }
     })
-    ipcMain.handle('p2p:create-group', p2pInvoke((payload) => this.p2pManager.createGroup(payload)))
+    ipcMain.handle('p2p:create-group', p2pInvoke(() => this.p2pManager.createGroup()))
     ipcMain.handle('p2p:join-group', p2pInvoke((payload) => this.p2pManager.joinGroup(payload)))
     ipcMain.handle('p2p:approve', p2pInvoke((payload) => this.p2pManager.approveJoin(payload.fp)))
     ipcMain.handle('p2p:reject', p2pInvoke((payload) => this.p2pManager.rejectJoin(payload.fp)))

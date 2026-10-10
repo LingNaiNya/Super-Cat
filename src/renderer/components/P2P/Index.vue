@@ -22,7 +22,8 @@
           v-if="!loaded"
           class="p2p-loading"
         >
-          {{ $t('p2p.loading') }}
+          <i class="el-icon-loading" />
+          <span>{{ $t('p2p.loading') }}</span>
         </div>
 
         <template v-else>
@@ -30,10 +31,11 @@
             v-if="lastError"
             class="p2p-alert error"
           >
-            <span>{{ lastError.message }}</span>
+            <i class="el-icon-circle-close" />
+            <span class="p2p-alert-text">{{ lastError.message }}</span>
             <el-button
               size="mini"
-              round
+              plain
               @click="onResetError"
             >{{ $t('p2p.dismiss') }}</el-button>
           </div>
@@ -42,52 +44,90 @@
             v-if="endpointWarningText"
             class="p2p-alert warn"
           >
-            {{ endpointWarningText }}
+            <i class="el-icon-warning-outline" />
+            <span class="p2p-alert-text">{{ endpointWarningText }}</span>
           </div>
 
-          <!-- 未入群：创建 / 加入 -->
+          <!-- 未入群：hero 介绍区 + 创建 / 加入两卡 -->
           <div
             v-if="!inGroup"
-            class="p2p-onboard"
+            class="p2p-onboard-wrap"
           >
-            <section class="p2p-card">
-              <h5>{{ $t('p2p.create-title') }}</h5>
-              <p class="p2p-desc">{{ $t('p2p.create-desc') }}</p>
-              <el-input
-                v-model="createForm.name"
-                size="small"
-                :placeholder="$t('p2p.group-name-ph')"
-              />
-              <el-button
-                type="primary"
-                size="small"
-                :loading="busy === 'create'"
-                @click="onCreate"
-              >{{ $t('p2p.create-action') }}</el-button>
-            </section>
+            <div
+              class="p2p-hero mo-stagger-item"
+              style="--mo-enter-delay: 0ms;"
+            >
+              <span class="p2p-hero-icon">
+                <mo-icon
+                  name="menu-p2p"
+                  width="28"
+                  height="28"
+                />
+              </span>
+              <h3 class="p2p-hero-title">{{ $t('p2p.hero-title') }}</h3>
+              <p class="p2p-hero-desc">{{ $t('p2p.hero-desc') }}</p>
+            </div>
 
-            <section class="p2p-card">
-              <h5>{{ $t('p2p.join-title') }}</h5>
-              <p class="p2p-desc">{{ $t('p2p.join-desc') }}</p>
-              <el-input
-                v-model="joinForm.code"
-                type="textarea"
-                :rows="3"
-                :placeholder="$t('p2p.code-ph')"
-              />
-              <el-button
-                type="primary"
-                size="small"
-                :loading="busy === 'join'"
-                @click="onJoin"
-              >{{ $t('p2p.join-action') }}</el-button>
-            </section>
+            <div class="p2p-onboard">
+              <section
+                class="p2p-card mo-stagger-item"
+                style="--mo-enter-delay: 80ms;"
+              >
+                <div class="p2p-card-title">
+                  <span class="p2p-card-icon">
+                    <mo-icon
+                      name="menu-add"
+                      width="16"
+                      height="16"
+                    />
+                  </span>
+                  <h5>{{ $t('p2p.create-title') }}</h5>
+                </div>
+                <p class="p2p-desc">{{ $t('p2p.create-desc') }}</p>
+                <el-button
+                  class="p2p-card-cta"
+                  type="primary"
+                  :loading="busy === 'create'"
+                  @click="onCreate"
+                >{{ $t('p2p.create-action') }}</el-button>
+              </section>
+
+              <section
+                class="p2p-card mo-stagger-item"
+                style="--mo-enter-delay: 160ms;"
+              >
+                <div class="p2p-card-title">
+                  <span class="p2p-card-icon">
+                    <mo-icon
+                      name="link"
+                      width="16"
+                      height="16"
+                    />
+                  </span>
+                  <h5>{{ $t('p2p.join-title') }}</h5>
+                </div>
+                <p class="p2p-desc">{{ $t('p2p.join-desc') }}</p>
+                <el-input
+                  v-model="joinForm.code"
+                  class="p2p-join-input"
+                  type="textarea"
+                  :rows="3"
+                  :placeholder="$t('p2p.code-ph')"
+                />
+                <el-button
+                  class="p2p-card-cta"
+                  type="primary"
+                  :loading="busy === 'join'"
+                  @click="onJoin"
+                >{{ $t('p2p.join-action') }}</el-button>
+              </section>
+            </div>
           </div>
 
           <!-- 等待审批 -->
           <div
             v-else-if="status === 'joining'"
-            class="p2p-card p2p-joining"
+            class="p2p-card p2p-joining mo-stagger-item"
           >
             <h5>{{ $t('p2p.joining-title') }}</h5>
             <p class="p2p-desc">{{ $t('p2p.joining-desc') }}</p>
@@ -99,9 +139,21 @@
             v-else
             class="p2p-group"
           >
-            <section class="p2p-card p2p-info">
+            <section
+              class="p2p-card p2p-info mo-stagger-item"
+              style="--mo-enter-delay: 0ms;"
+            >
               <div class="p2p-card-head">
-                <h5>{{ isOwner ? $t('p2p.invite-title') : $t('p2p.my-info-title') }}</h5>
+                <div class="p2p-card-title">
+                  <span class="p2p-card-icon">
+                    <mo-icon
+                      name="menu-p2p"
+                      width="16"
+                      height="16"
+                    />
+                  </span>
+                  <h5>{{ isOwner ? $t('p2p.invite-title') : $t('p2p.my-info-title') }}</h5>
+                </div>
                 <div class="p2p-info-side">
                   <span
                     v-if="groupName || members.length"
@@ -110,7 +162,7 @@
                   <el-button
                     v-if="isOwner"
                     size="mini"
-                    round
+                    plain
                     @click="onResetCode"
                   >{{ $t('p2p.invite-reset') }}</el-button>
                 </div>
@@ -146,9 +198,21 @@
               </div>
             </section>
 
-            <section class="p2p-card">
+            <section
+              class="p2p-card mo-stagger-item"
+              style="--mo-enter-delay: 80ms;"
+            >
               <div class="p2p-card-head">
-                <h5>{{ $t('p2p.members-title') }}</h5>
+                <div class="p2p-card-title">
+                  <span class="p2p-card-icon">
+                    <mo-icon
+                      name="node"
+                      width="16"
+                      height="16"
+                    />
+                  </span>
+                  <h5>{{ $t('p2p.members-title') }}</h5>
+                </div>
               </div>
 
               <div
@@ -237,29 +301,48 @@
                 >
                   <el-button
                     size="mini"
-                    round
+                    plain
                     :loading="speedBusy === m.fp"
                     @click="onSpeedTest(m)"
                   >{{ $t('p2p.speed-test') }}</el-button>
                   <el-button
                     size="mini"
-                    round
+                    plain
                     @click="openPush(m)"
                   >{{ $t('p2p.push') }}</el-button>
                   <el-button
                     v-if="isOwner"
                     size="mini"
-                    round
                     type="danger"
                     plain
                     @click="onKick(m)"
                   >{{ $t('p2p.kick') }}</el-button>
                 </div>
               </div>
+
+              <!-- 群主独占、无人待审时的引导空态 -->
+              <p
+                v-if="isOwner && !pending.length && members.length <= 1"
+                class="p2p-desc p2p-members-empty"
+              >{{ $t('p2p.members-empty') }}</p>
             </section>
 
-            <section class="p2p-card">
-              <h5>{{ $t('p2p.settings-title') }}</h5>
+            <section
+              class="p2p-card mo-stagger-item"
+              style="--mo-enter-delay: 160ms;"
+            >
+              <div class="p2p-card-head">
+                <div class="p2p-card-title">
+                  <span class="p2p-card-icon">
+                    <mo-icon
+                      name="settings"
+                      width="16"
+                      height="16"
+                    />
+                  </span>
+                  <h5>{{ $t('p2p.settings-title') }}</h5>
+                </div>
+              </div>
 
               <div class="p2p-field">
                 <span class="p2p-field-label">{{ $t('p2p.open-ports') }}</span>
@@ -367,13 +450,20 @@
   import { mapState } from 'vuex'
   import { Message } from 'element-ui'
 
+  /* Icon.register 是 import 副作用且页面为懒加载 chunk，
+     本页用到的图标全部自行注册，不依赖其它页面先加载。 */
+  import '@/components/Icons/menu-p2p'
+  import '@/components/Icons/menu-add'
+  import '@/components/Icons/link'
+  import '@/components/Icons/node'
+  import '@/components/Icons/settings'
+
   export default {
     name: 'mo-content-p2p',
     data () {
       return {
         busy: '',
         speedBusy: '',
-        createForm: { name: '' },
         joinForm: { code: '' },
         checkedPorts: [],
         customPortInput: '',
@@ -516,9 +606,7 @@
       async onCreate () {
         this.busy = 'create'
         try {
-          const resp = await this.$store.dispatch('p2p/createGroup', {
-            name: this.createForm.name
-          })
+          const resp = await this.$store.dispatch('p2p/createGroup')
           if (resp.ok) {
             Message.success(this.$t('p2p.created'))
           } else {
@@ -774,7 +862,19 @@
    `.panel .panel-content:not(.dashboard-content) { padding: 0 }` 清零，
    所以内缩落在内层 .p2p-body —— 同 .task-list / .form-preference 的做法。 */
 .p2p-body {
+  /* 功能色 rgb 三元组（仿主题的 --mo-primary-rgb 惯例）：
+     亮色为基线，暗色只在这里覆写一次，胶囊/告警条取 rgba 用。 */
+  --p2p-ok-rgb: 103, 194, 58;
+  --p2p-warn-rgb: 230, 162, 60;
+  --p2p-bad-rgb: 245, 108, 108;
   padding: 24px 40px 72px;
+}
+
+.theme-dark .p2p-body {
+  /* light-2 一档，在暗玻璃上不发灰 */
+  --p2p-ok-rgb: 133, 206, 97;
+  --p2p-warn-rgb: 235, 181, 99;
+  --p2p-bad-rgb: 247, 137, 137;
 }
 
 @media only screen and (min-width: 568px) {
@@ -813,17 +913,24 @@
 }
 
 .p2p-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   padding: 48px 0;
-  text-align: center;
   color: var(--mo-text-regular);
+
+  .el-icon-loading {
+    font-size: 22px;
+    color: var(--mo-primary);
+  }
 }
 
 /* 与卡片同宽同左边界，否则警告条会比卡片宽出一截、贴着窗口边 */
 .p2p-alert {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 10px;
   max-width: 960px;
   margin-bottom: 20px;
   padding: 12px 16px;
@@ -831,24 +938,105 @@
   font-size: 13px;
   line-height: 1.5;
 
+  > i {
+    flex-shrink: 0;
+    font-size: 16px;
+  }
+
+  .p2p-alert-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .el-button {
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
   &.error {
-    background: rgba(245, 108, 108, 0.12);
-    border: 1px solid rgba(245, 108, 108, 0.4);
+    background: rgba(var(--p2p-bad-rgb), 0.12);
+    border: 1px solid rgba(var(--p2p-bad-rgb), 0.4);
     color: var(--mo-text-regular);
+
+    > i {
+      color: rgb(var(--p2p-bad-rgb));
+    }
   }
   &.warn {
-    background: rgba(230, 162, 60, 0.1);
-    border: 1px solid rgba(230, 162, 60, 0.38);
+    background: rgba(var(--p2p-warn-rgb), 0.1);
+    border: 1px solid rgba(var(--p2p-warn-rgb), 0.38);
     color: var(--mo-text-regular);
+
+    > i {
+      color: rgb(var(--p2p-warn-rgb));
+    }
   }
 }
 
-/* 左对齐（不再 margin:0 auto 居中）：居中会让标题、警告条、卡片各占一条左边界 */
+/* 未入群引导态的页顶介绍区：居中一块，图标带主色光晕。
+   下方两卡仍走 .p2p-onboard 的左对齐网格（居中会让标题、警告条、
+   卡片各占一条左边界）。 */
+.p2p-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 640px;
+  margin: 28px auto 36px;
+  text-align: center;
+
+  .p2p-hero-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    margin-bottom: 16px;
+    border-radius: $mo-radius-pill;
+    color: var(--mo-primary);
+    background: rgba(var(--mo-primary-rgb), 0.12);
+    border: 1px solid rgba(var(--mo-primary-rgb), 0.35);
+    box-shadow: 0 0 28px rgba(var(--mo-primary-rgb), 0.35);
+  }
+
+  .p2p-hero-title {
+    margin: 0 0 8px;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--mo-text-primary);
+  }
+
+  .p2p-hero-desc {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--mo-text-secondary);
+  }
+}
+
 .p2p-onboard {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 20px;
   max-width: 960px;
+
+  /* 列向 flex：CTA 用 margin-top:auto 贴底，两卡等高时按钮底边对齐 */
+  .p2p-card {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .p2p-desc {
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+
+  .p2p-join-input {
+    margin-bottom: 18px;
+  }
+
+  .p2p-card .p2p-card-cta.el-button {
+    margin-top: auto;
+  }
 }
 
 .p2p-group {
@@ -882,11 +1070,40 @@
   }
 }
 
+/* 卡头「图标块 + 标题」，与仪表盘 .card-header 同一套语言 */
+.p2p-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+
+  h5 {
+    margin: 0;
+  }
+}
+
+.p2p-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: $mo-radius-sm;
+  color: var(--mo-primary);
+  background-color: rgba(var(--mo-primary-rgb), 0.12);
+}
+
 .p2p-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  margin-bottom: 8px;
+
+  .p2p-card-title {
+    margin-bottom: 0;
+  }
 
   h5 {
     margin: 0;
@@ -897,12 +1114,12 @@
   }
 }
 
-/* 说明文字统一降到 11px / secondary，相邻段收紧节奏，
+/* 说明文字统一 12px / secondary（引导卡内提到 13px），相邻段收紧节奏，
    橙色的 .conflict-text 仍是这一叠文字里唯一的强调色。 */
 .p2p-desc {
   margin: 6px 0 0;
-  font-size: 11px;
-  line-height: 1.75;
+  font-size: 12px;
+  line-height: 1.7;
   color: var(--mo-text-secondary, rgba(255, 255, 255, 0.55));
 
   & + .p2p-desc {
@@ -914,7 +1131,7 @@
 .p2p-section {
   margin-top: 14px;
   padding-top: 14px;
-  border-top: 1px solid rgba(48, 49, 51, 0.1);
+  border-top: 1px solid var(--mo-glass-border);
 
   &.is-first {
     margin-top: 8px;
@@ -927,7 +1144,7 @@
   margin-top: 10px;
   padding: 12px 14px;
   border-radius: $mo-radius-sm;
-  background: rgba(48, 49, 51, 0.06);
+  background: var(--mo-glass-chrome-background);
   border: 1px dashed rgba(var(--mo-primary-rgb), 0.45);
   font-family: "SF Mono", Consolas, "Cascadia Mono", "Courier New", monospace;
   font-size: 13px;
@@ -970,8 +1187,15 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
-  padding: 10px 0;
-  border-top: 1px solid rgba(48, 49, 51, 0.08);
+  padding: 10px 12px;
+  margin: 0 -12px;
+  border-top: 1px solid var(--mo-glass-border);
+  border-radius: $mo-radius-sm;
+  transition: $mo-transition-fast;
+
+  &:hover {
+    background: var(--mo-glass-background-hover);
+  }
 
   .p2p-cell {
     flex: 0 0 auto;
@@ -983,10 +1207,14 @@
 
   &.pending {
     background: rgba(var(--mo-primary-rgb), 0.06);
-    border-radius: $mo-radius-sm;
     border-top: none;
+    border-left: 2px solid var(--mo-primary);
     padding: 10px 12px;
     margin-bottom: 8px;
+
+    &:hover {
+      background: rgba(var(--mo-primary-rgb), 0.1);
+    }
   }
 
   &.is-self {
@@ -1040,7 +1268,9 @@
   &.is-online {
     opacity: 1;
     background-color: var(--mo-accent-green);
-    box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.16);
+    /* 与仪表盘 .live-dot.active 同款呼吸环 */
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+    animation: mo-pulse-ring 1.8s $mo-ease-standard infinite;
   }
 }
 
@@ -1064,38 +1294,38 @@
 .p2p-latency {
   font-family: "SF Mono", Consolas, "Cascadia Mono", "Courier New", monospace;
   font-size: 12px;
-  padding: 2px 8px;
-  border-radius: $mo-radius-sm;
+  padding: 2px 10px;
+  border-radius: $mo-radius-pill;
   border: 1px solid transparent;
   white-space: nowrap;
 
   &.ok {
-    color: #67c23a;
-    background: rgba(103, 194, 58, 0.12);
-    border-color: rgba(103, 194, 58, 0.35);
+    color: rgb(var(--p2p-ok-rgb));
+    background: rgba(var(--p2p-ok-rgb), 0.12);
+    border-color: rgba(var(--p2p-ok-rgb), 0.35);
   }
   &.mid {
-    color: #e6a23c;
-    background: rgba(230, 162, 60, 0.12);
-    border-color: rgba(230, 162, 60, 0.35);
+    color: rgb(var(--p2p-warn-rgb));
+    background: rgba(var(--p2p-warn-rgb), 0.12);
+    border-color: rgba(var(--p2p-warn-rgb), 0.35);
   }
   &.bad {
-    color: #f56c6c;
-    background: rgba(245, 108, 108, 0.12);
-    border-color: rgba(245, 108, 108, 0.35);
+    color: rgb(var(--p2p-bad-rgb));
+    background: rgba(var(--p2p-bad-rgb), 0.12);
+    border-color: rgba(var(--p2p-bad-rgb), 0.35);
   }
   &.na {
     color: var(--mo-text-secondary, rgba(255, 255, 255, 0.45));
-    background: rgba(48, 49, 51, 0.05);
-    border-color: rgba(48, 49, 51, 0.12);
+    background: var(--mo-glass-chrome-background);
+    border-color: var(--mo-glass-border);
   }
 }
 
 .p2p-speed {
   font-family: "SF Mono", Consolas, "Cascadia Mono", "Courier New", monospace;
   font-size: 11px;
-  padding: 2px 8px;
-  border-radius: $mo-radius-sm;
+  padding: 2px 10px;
+  border-radius: $mo-radius-pill;
   background: rgba(var(--mo-primary-rgb), 0.12);
   border: 1px solid rgba(var(--mo-primary-rgb), 0.3);
   color: var(--mo-primary);
@@ -1122,8 +1352,8 @@
 }
 
 .p2p-vip {
-  padding: 2px 8px;
-  border-radius: $mo-radius-sm;
+  padding: 2px 10px;
+  border-radius: $mo-radius-pill;
   background: rgba(var(--mo-primary-rgb), 0.14);
   border: 1px solid rgba(var(--mo-primary-rgb), 0.35);
   font-family: "SF Mono", Consolas, "Cascadia Mono", "Courier New", monospace;
@@ -1139,14 +1369,14 @@
 }
 
 .conflict-text {
-  color: #e6a23c;
+  color: rgb(var(--p2p-warn-rgb));
 }
 
 .p2p-field {
-  margin-bottom: 14px;
-
-  &:last-child {
-    margin-bottom: 0;
+  & + .p2p-field {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--mo-glass-border);
   }
 }
 
@@ -1204,9 +1434,9 @@
 .p2p-group-badge {
   margin: 0;
   padding: 2px 10px;
-  border-radius: $mo-radius-sm;
-  background: rgba(48, 49, 51, 0.05);
-  border: 1px solid rgba(48, 49, 51, 0.1);
+  border-radius: $mo-radius-pill;
+  background: var(--mo-glass-chrome-background);
+  border: 1px solid var(--mo-glass-border);
   white-space: nowrap;
 }
 
@@ -1222,7 +1452,9 @@
   }
 }
 
-.p2p-port-input {
+/* .el-input 自带 width:100%（同特异性、打包顺序靠后），多挂一级
+   .el-input 类保证 120px 生效，端口输入和「添加」才能留在同一行 */
+.p2p-port-input.el-input {
   width: 120px;
 
   .el-input__inner {
@@ -1241,30 +1473,9 @@
   }
 }
 
-/* 上面的深色块与细线是亮色基线（同 Theme/Default.scss 的约定），
-   暗色在这里覆盖 —— 白系值放到暗色下会整片隐形。 */
-.theme-dark {
-  .p2p-code {
-    background: rgba(0, 0, 0, 0.28);
-    color: var(--mo-text-regular);
-  }
-
-  .p2p-group-badge {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.1);
-  }
-
-  .p2p-row {
-    border-top-color: rgba(255, 255, 255, 0.06);
-  }
-
-  .p2p-section {
-    border-top-color: rgba(255, 255, 255, 0.14);
-  }
-
-  .p2p-latency.na {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.12);
-  }
+/* 群主独占时的成员空态（功能色与次级表面已全走 CSS 变量，
+   暗色在 .p2p-body 覆写一次即可，无需再按类逐条 .theme-dark） */
+.p2p-members-empty {
+  margin-top: 8px;
 }
 </style>

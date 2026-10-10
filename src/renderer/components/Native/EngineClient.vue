@@ -11,6 +11,7 @@
     showItemInFolder
   } from '@/utils/native'
   import { checkTaskIsBT, getTaskName } from '@shared/utils'
+  import { ERROR_CODE_DOC_URL } from '@shared/constants'
 
   export default {
     name: 'mo-engine-client',
@@ -113,7 +114,7 @@
             const { errorCode, errorMessage } = task
             console.error(`[Super Cat] download error gid: ${gid}, #${errorCode}, ${errorMessage}`)
             const message = this.$t('task.download-error-message', { taskName })
-            const link = `<a target="_blank" href="https://github.com/agalwood/Super Cat/wiki/Error#${errorCode}" rel="noopener noreferrer">${errorCode}</a>`
+            const link = `<a target="_blank" href="${ERROR_CODE_DOC_URL}#${errorCode}" rel="noopener noreferrer">${errorCode}</a>`
             this.$msg({
               type: 'error',
               showClose: true,

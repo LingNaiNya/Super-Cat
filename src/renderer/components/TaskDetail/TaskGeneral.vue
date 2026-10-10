@@ -27,7 +27,13 @@
     </el-form-item>
     <el-form-item :label="`${$t('task.task-error-info')}: `" v-if="task.errorCode && task.errorCode !== '0'">
       <div class="form-static-value">
-        {{ task.errorCode }} {{ task.errorMessage }}
+        <a
+          class="error-code-link"
+          :href="errorCodeUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+        >{{ task.errorCode }}</a>
+        {{ task.errorMessage }}
       </div>
     </el-form-item>
 
@@ -83,7 +89,7 @@
     getTaskUri,
     localeDateTimeFormat
   } from '@shared/utils'
-  import { APP_THEME, TASK_STATUS } from '@shared/constants'
+  import { APP_THEME, ERROR_CODE_DOC_URL, TASK_STATUS } from '@shared/constants'
   import { getTaskFullPath } from '@/utils/native'
   import ShowInFolder from '@/components/Native/ShowInFolder'
   import TaskStatus from '@/components/Task/TaskStatus'
@@ -152,6 +158,9 @@
       },
       isBT () {
         return checkTaskIsBT(this.task)
+      },
+      errorCodeUrl () {
+        return `${ERROR_CODE_DOC_URL}#${this.task.errorCode}`
       }
     },
     filters: {
@@ -187,6 +196,18 @@
 
   &:active {
     transform: scale($mo-press-scale);
+  }
+}
+
+/* Error code jumps to the in-repo error-code doc; keep it subtle until hover. */
+.error-code-link {
+  color: inherit;
+  text-decoration: none;
+  transition: $mo-transition-fast;
+
+  &:hover {
+    color: var(--mo-primary);
+    text-decoration: underline;
   }
 }
 </style>

@@ -85,7 +85,7 @@
               v-model="form.noProxy">
             </el-input>
             <div class="el-form-item__info" style="margin-top: 8px;">
-              <a target="_blank" href="https://github.com/agalwood/Super Cat/wiki/Proxy" rel="noopener noreferrer">
+              <a target="_blank" href="https://aria2.github.io/manual/en/html/aria2c.html#cmdoption-all-proxy" rel="noopener noreferrer">
                 {{ $t('preferences.proxy-tips') }}
                 <mo-icon name="link" width="12" height="12" />
               </a>
@@ -231,7 +231,7 @@
                 </i>
               </el-input>
               <div class="el-form-item__info" style="margin-top: 8px;">
-                <a target="_blank" href="https://github.com/agalwood/Super Cat/wiki/RPC" rel="noopener noreferrer">
+                <a target="_blank" href="https://aria2.github.io/manual/en/html/aria2c.html#cmdoption-rpc-secret" rel="noopener noreferrer">
                   {{ $t('preferences.rpc-secret-tips') }}
                   <mo-icon name="link" width="12" height="12" />
                 </a>

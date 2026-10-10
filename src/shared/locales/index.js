@@ -1,7 +1,7 @@
 /**
  * Welcome to translate to more versions in other languages.
  * Please read the translation guide before starting work.
- * https://github.com/agalwood/Super Cat/blob/master/CONTRIBUTING.md#-translation-guide
+ * https://github.com/agalwood/Motrix/blob/master/CONTRIBUTING.md#-translation-guide
  *
  * Please keep the locale key in alphabetical order.
  */

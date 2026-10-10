@@ -899,7 +899,7 @@ export default class Application extends EventEmitter {
     })
 
     this.on('help:report-problem', () => {
-      const url = 'https://motrix.app/report'
+      const url = 'https://github.com/LingNaiNya/Super-Cat/issues'
       this.openExternal(url)
     })
   }

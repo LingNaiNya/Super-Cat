@@ -198,6 +198,9 @@ export const TRAY_CANVAS_CONFIG = {
   TEXT_FONT_SIZE: 8
 }
 
+/* In-repo download error-code doc (aria2 exit status), opened with #<errorCode> */
+export const ERROR_CODE_DOC_URL = 'https://github.com/LingNaiNya/Super-Cat/blob/main/docs/error-codes.md'
+
 export const COMMON_RESOURCE_TAGS = ['http://', 'https://', 'ftp://', 'magnet:']
 export const THUNDER_RESOURCE_TAGS = ['thunder://']
 

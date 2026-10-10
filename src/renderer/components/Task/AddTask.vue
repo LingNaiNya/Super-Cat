@@ -147,7 +147,7 @@
           </el-col>
           <el-col :span="8" :xs="24">
             <div class="help-link">
-              <a target="_blank" href="https://github.com/agalwood/Super Cat/wiki/Proxy" rel="noopener noreferrer">
+              <a target="_blank" href="https://aria2.github.io/manual/en/html/aria2c.html#cmdoption-all-proxy" rel="noopener noreferrer">
                 {{ $t('preferences.proxy-tips') }}
                 <mo-icon name="link" width="12" height="12" />
               </a>

@@ -40,20 +40,18 @@ No prebuilt packages are published at the moment; build from source (see **Devel
 - 🚥 Supports speed limit
 - 🕶 Mock User-Agent
 - 🔔 Download completed notification
-- 💻 Ready for Touch Bar (Mac only)
+- 🌐 **Interconnect**: build an invite-only P2P virtual LAN — group approval, member list with latency/loss & speed test, NAT hole punching, in-group task push, auto leave on exit
+- 📊 Dashboard with real-time transfer stats
+- 📥 App updates download as a task row with live progress & speed
+- 📋 Chinese error-code reference (`docs/error-codes.md`) — error toasts link straight to it
+- 💻 Ready for Touch Bar (macOS, source builds)
 - 🤖 Resident system tray for quick operation
-- 📟 Tray speed meter displays real-time speed (Mac only)
+- 📟 Tray speed meter (toggleable in Preferences)
 - 🌑 Dark mode
 - 🗑 Delete related files when removing tasks (optional)
 - 📦 In-app update checks against GitHub Releases
 - 🌍 I18n, [View supported languages](#-internationalization).
 - 🛠 More features in development
-
-## 🖥 User Interface
-
-| Task list (dark) | Task list (light) |
-|---|---|
-| ![dark](./screenshots/motrix-task-list-downloading-dark@2x.png) | ![light](./screenshots/motrix-task-list-downloading-light@2x.png) |
 
 ## ⌨️ Development
 
@@ -97,6 +95,8 @@ If you are interested in participating in joint development, PR and Forks are we
 ## 🌍 Internationalization
 
 Translations into versions for other languages are welcome 🧐!
+
+> The table below covers the translations inherited from Motrix, which are complete for those languages; new Super Cat features (Interconnect, update task row, error-code reference…) currently ship in English & Chinese only and fall back to English elsewhere.
 
 | Key   | Name                | Status       |
 |-------|:--------------------|:-------------|

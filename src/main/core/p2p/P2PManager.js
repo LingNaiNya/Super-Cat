@@ -28,7 +28,11 @@ const STATE_PUSH_DEBOUNCE = 150
 // legs relay through the owner and are labelled as such in the UI).
 const PROBE_INTERVAL = 5000
 const PROBE_WINDOW = 12
-const PROBE_LOSS_TIMEOUT = 3000
+// Loss is swept only at the head of probeTick, so a probe cannot be judged
+// before the next round: the effective threshold IS the send interval.
+// Bound it explicitly — a literal below the interval changes nothing, one
+// above it would starve the sweep and freeze the stats entirely.
+const PROBE_LOSS_TIMEOUT = PROBE_INTERVAL
 
 // Speed test over a pooled data connection (the same path VIP forwarding uses).
 const SPEED_TOTAL = 24 * 1024 * 1024
@@ -260,6 +264,15 @@ export default class P2PManager extends EventEmitter {
       this.ownerConn.conn.close()
       this.ownerConn = null
     }
+    // pending approvals each hold a live socket — dropping the array alone
+    // left them dangling until the requester's own 180s timeout
+    this.pending.forEach((p) => {
+      try {
+        p.conn.close()
+      } catch (err) {
+        /* already gone */
+      }
+    })
     this.pending = []
   }
 
@@ -291,6 +304,9 @@ export default class P2PManager extends EventEmitter {
   }
 
   async startServer () {
+    if (this.server) {
+      return
+    }
     const preferred = Number(this.cfg.get('listen-port')) || P2P_DEFAULT_LISTEN_PORT
     let bound = null
     let lastErr = null
@@ -334,7 +350,13 @@ export default class P2PManager extends EventEmitter {
   }
 
   schedule (delay, fn, repeat = false) {
+    let current = null
     const tick = async () => {
+      if (current) {
+        // this handle already fired; drop it so the Set does not grow
+        this.timers.delete(current)
+        current = null
+      }
       if (this.stopping) {
         return
       }
@@ -344,13 +366,13 @@ export default class P2PManager extends EventEmitter {
         logger.warn('[Super Cat] p2p scheduled task failed:', err.message)
       }
       if (repeat && !this.stopping) {
-        const t = setTimeout(tick, delay)
-        this.timers.add(t)
+        current = setTimeout(tick, delay)
+        this.timers.add(current)
       }
     }
-    const t = setTimeout(tick, delay)
-    this.timers.add(t)
-    return t
+    current = setTimeout(tick, delay)
+    this.timers.add(current)
+    return current
   }
 
   clearTimers () {
@@ -381,15 +403,25 @@ export default class P2PManager extends EventEmitter {
     this.status = P2P_STATUS.STARTING
     this.pushState()
 
-    if (!this.server) {
-      await this.startServer()
-    }
-    await this.discoverEndpoint(true)
-    if (!this.endpoint.h) {
+    try {
+      if (!this.server) {
+        await this.startServer()
+      }
+      await this.discoverEndpoint(true)
+      if (!this.endpoint.h) {
+        throw new Error('无法获取本机网络地址（UPnP/STUN 均失败），无法生成邀请码')
+      }
+    } catch (err) {
+      // leave no half-created group behind: clear the role we reserved and
+      // surface the failure through the error bar (dismiss resets ERROR)
       this.cfg.set('role', '')
       this.cfg.set('gid', '')
       this.cfg.set('sec', '')
-      throw new Error('无法获取本机网络地址（UPnP/STUN 均失败），无法生成邀请码')
+      this.members = []
+      this.status = P2P_STATUS.ERROR
+      this.lastError = { message: err.message }
+      this.pushState()
+      throw err
     }
 
     this.members = [this.selfMember()]
@@ -454,18 +486,28 @@ export default class P2PManager extends EventEmitter {
     this.lastError = null
     this.pushState()
 
-    if (!this.server) {
-      await this.startServer()
-    }
-    this.refreshEndpointBackground()
+    let conn
+    try {
+      if (!this.server) {
+        await this.startServer()
+      }
+      this.refreshEndpointBackground()
 
-    // v2 codes carry every candidate endpoint; v1 falls back to eps[0].
-    const conn = await this.dialAnyControl(invite.eps, {
-      gid: invite.gid,
-      mode: 'join',
-      expectPub: invite.pub,
-      sec: invite.sec
-    }, 2500)
+      // v2 codes carry every candidate endpoint; v1 falls back to eps[0].
+      conn = await this.dialAnyControl(invite.eps, {
+        gid: invite.gid,
+        mode: 'join',
+        expectPub: invite.pub,
+        sec: invite.sec
+      }, 2500)
+    } catch (err) {
+      // a bad/expired code or an offline owner used to leave status stuck
+      // on 'joining' with no way back — record it like a rejection instead
+      this.status = P2P_STATUS.ERROR
+      this.lastError = { message: err.message }
+      this.pushState()
+      throw err
+    }
 
     let result
     try {
@@ -502,6 +544,16 @@ export default class P2PManager extends EventEmitter {
       return { ok: false, reason: this.lastError.message }
     }
 
+    // While approval was pending this node may have been created as an owner
+    // (or joined elsewhere) — never clobber that with a late approval.
+    if (this.inGroup) {
+      conn.close()
+      this.status = P2P_STATUS.ERROR
+      this.lastError = { message: '已在群组中，无法同时采纳本次审批结果' }
+      this.pushState()
+      throw new Error('已经在一个群组中，请先退出')
+    }
+
     // Adopt the group and keep this authenticated link as the control plane.
     this.cfg.set('role', P2P_ROLE.MEMBER)
     this.cfg.set('gid', invite.gid)
@@ -523,13 +575,29 @@ export default class P2PManager extends EventEmitter {
     if (!this.inGroup) {
       return
     }
+    // The farewell frame must reach the wire before the sockets die — and on
+    // quit the whole process dies right after us. Register close promises up
+    // front, let stop()'s graceful end() flush the writes, bound the wait so
+    // a stuck link can never stall the quit path.
+    const flushed = []
     if (this.isOwner) {
       // owner leaving dissolves the group for everyone
       this.broadcastToMembers({ t: 'group-dissolved' })
+      this.controls.forEach((entry) => {
+        if (!entry.conn.closed) {
+          flushed.push(new Promise((resolve) => entry.conn.once('close', resolve)))
+        }
+      })
     } else if (this.ownerConn) {
       this.ownerConn.conn.send({ t: 'leave' })
+      if (!this.ownerConn.conn.closed) {
+        flushed.push(new Promise((resolve) => this.ownerConn.conn.once('close', resolve)))
+      }
     }
     await this.stop()
+    if (flushed.length) {
+      await Promise.race([Promise.all(flushed), sleep(1000)])
+    }
     this.cfg.set('role', '')
     this.cfg.set('gid', '')
     this.cfg.set('sec', '')
@@ -612,6 +680,7 @@ export default class P2PManager extends EventEmitter {
       entry.conn.close()
     }
     this.broadcastToMembers({ t: 'member-update', op: 'remove', member: { fp } }, fp)
+    this.dropLinkStats(fp)
     this.pushState()
     return { ok: true }
   }
@@ -758,6 +827,7 @@ export default class P2PManager extends EventEmitter {
       if (this.controls.get(fp) === entry) {
         this.controls.delete(fp)
         this.setMemberOnline(fp, false)
+        this.dropLinkStats(fp)
       }
     })
 
@@ -928,6 +998,13 @@ export default class P2PManager extends EventEmitter {
     conn.on('close', () => {
       if (this.ownerConn === entry) {
         this.ownerConn = null
+        const ownerFp = Identity.fingerprintOf(this.cfg.get('owner-pub'))
+        if (ownerFp) {
+          this.dropLinkStats(ownerFp)
+        }
+        // without this the owner row kept showing its pre-drop green RTT
+        // until (and after) a reconnect flipped it straight back to online
+        this.pushState()
         this.scheduleOwnerRetry()
       }
     })
@@ -965,6 +1042,7 @@ export default class P2PManager extends EventEmitter {
         this.members = [...this.members.filter((m) => m.fp !== header.member.fp), header.member]
       } else if (header.op === 'remove' && header.member) {
         this.members = this.members.filter((m) => m.fp !== header.member.fp)
+        this.dropLinkStats(header.member.fp)
       }
       this.cfg.set('members', this.members)
       this.pushState()
@@ -1128,6 +1206,11 @@ export default class P2PManager extends EventEmitter {
         mode: 'member',
         expectPub: member.pub
       }, DIRECT_DIAL_TIMEOUT)
+      if (this.stopping) {
+        // shutdown ran while we were dialling — do not resurrect a control
+        conn.close()
+        return
+      }
       this.attachOwnerControl(conn, member.fp, { initiator: true })
     } catch (err) {
       logger.info(`[Super Cat] owner dial member ${member.fp} failed: ${err.message}`)
@@ -1190,8 +1273,8 @@ export default class P2PManager extends EventEmitter {
         mode: 'member',
         expectPub: ownerPub
       }, DIRECT_DIAL_TIMEOUT)
-      if (this.ownerConn) {
-        // someone beat us to it (owner dialed in meanwhile)
+      if (this.stopping || this.ownerConn) {
+        // stopped meanwhile, or someone beat us to it (owner dialed in)
         conn.close()
         return
       }
@@ -1302,6 +1385,17 @@ export default class P2PManager extends EventEmitter {
     this.speedResults.clear()
   }
 
+  // A link that is gone must not keep its last-window RTT/loss alive in the
+  // UI, and a re-join must not inherit the previous session's samples.
+  dropLinkStats (fp) {
+    this.probeSamples.delete(fp)
+    for (const [seq, p] of this.probePending) {
+      if (p.target === fp) {
+        this.probePending.delete(seq)
+      }
+    }
+  }
+
   /* ------------------------------------------------------ speed testing */
 
   /**
@@ -1394,7 +1488,15 @@ export default class P2PManager extends EventEmitter {
         const n = Math.min(SPEED_CHUNK, SPEED_TOTAL - sent)
         if (!conn.send({ t: 'speed-up' }, chunk.subarray(0, n))) {
           // eslint-disable-next-line no-await-in-loop
-          await new Promise((resolve) => conn.socket.once('drain', resolve))
+          await new Promise((resolve) => {
+            conn.socket.once('drain', resolve)
+            conn.socket.once('close', resolve)
+          })
+          if (conn.closed) {
+            // a dead socket never emits 'drain' — leave via finally so
+            // speedActive always resets
+            throw new Error('测速连接已关闭')
+          }
         }
         sent += n
       }
@@ -1448,7 +1550,13 @@ export default class P2PManager extends EventEmitter {
         const n = Math.min(SPEED_CHUNK, quota - sent)
         if (!conn.send({ t: 'speed-data' }, chunk.subarray(0, n))) {
           // eslint-disable-next-line no-await-in-loop
-          await new Promise((resolve) => conn.socket.once('drain', resolve))
+          await new Promise((resolve) => {
+            conn.socket.once('drain', resolve)
+            conn.socket.once('close', resolve)
+          })
+          if (conn.closed) {
+            break
+          }
         }
         sent += n
       }
@@ -1549,6 +1657,7 @@ export default class P2PManager extends EventEmitter {
       entry.conn.close()
     }
     this.broadcastToMembers({ t: 'member-update', op: 'remove', member: { fp } }, fp)
+    this.dropLinkStats(fp)
     logger.info(`[Super Cat] member ${fp} removed: ${reason}`)
     this.pushState()
   }
@@ -1559,18 +1668,43 @@ export default class P2PManager extends EventEmitter {
     if (!this.isOwner) {
       return
     }
-    for (const member of this.members.filter((m) => !m.isSelf && m.h)) {
-      if (this.stopping) {
-        return
-      }
+    // Probe only what a probe can answer about: a peer must be online (an
+    // offline probe proves nothing yet used to be reported as "无法入站"),
+    // and a private h outside our own /24 is unreachable BY DEFINITION —
+    // leave those at null ("入站未知") instead of burning a 3s timeout.
+    const candidates = this.members.filter((m) =>
+      !m.isSelf && m.h && m.online &&
+      (!isPrivateAddr(m.h) || sameSubnet24(m.h, this.lanAddress))
+    )
+    // small bounded concurrency: N black-holed hosts used to serialise 3s
+    // each and stretch this tick far past its 60s interval
+    const BATCH = 4
+    for (let i = 0; i < candidates.length; i += BATCH) {
+      const batch = candidates.slice(i, i + BATCH)
       // eslint-disable-next-line no-await-in-loop
-      const reachable = await tcpProbe(member.h, member.p, 3000)
-      if (member.reachable !== reachable) {
+      const results = await Promise.all(batch.map((m) => tcpProbe(m.h, m.p, 3000)))
+      for (let j = 0; j < batch.length; j++) {
+        if (this.stopping) {
+          return
+        }
+        const member = batch[j]
+        const reachable = results[j]
+        if (member.reachable === reachable) {
+          continue
+        }
         this.members = this.members.map((m) => (
           m.fp === member.fp ? { ...m, reachable } : m
         ))
-        this.cfg.set('members', this.members)
         this.pushState()
+        const updated = this.members.find((m) => m.fp === member.fp)
+        if (updated) {
+          // mirror the verdict to the rest of the group — before this only
+          // the owner ever saw a reachable value that was actually fresh
+          this.broadcastToMembers(
+            { t: 'member-update', op: 'add', member: this.publicMember(updated) },
+            member.fp
+          )
+        }
       }
     }
   }
@@ -2752,6 +2886,17 @@ function tcpConnect (host, port, timeout, localPort = null, localAddress = null)
 
 function isLoopbackHost (h) {
   return h === '::1' || h === '127.0.0.1' || String(h).startsWith('127.')
+}
+
+function isPrivateAddr (h) {
+  return /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|fc|fd)/i.test(String(h || ''))
+}
+
+function sameSubnet24 (a, b) {
+  if (!a || !b) {
+    return false
+  }
+  return String(a).split('.').slice(0, 3).join('.') === String(b).split('.').slice(0, 3).join('.')
 }
 
 function tcpProbe (host, port, timeout) {

@@ -252,6 +252,9 @@
               >
                 <div class="p2p-cell p2p-cell-name">
                   <span class="p2p-name">{{ m.name }}</span>
+                </div>
+                <!-- 徽章独占一列：姓名列只放名字，列中心才真正属于名字 -->
+                <div class="p2p-cell p2p-cell-badges">
                   <el-tag
                     v-if="m.isOwnerRow"
                     size="mini"
@@ -458,12 +461,18 @@
   import '@/components/Icons/node'
   import '@/components/Icons/settings'
 
+  // a 12-sample window only earns a colour verdict after a few probes —
+  // one lost sample out of two would otherwise flash red right after join
+  const PROBE_MIN_SAMPLES = 3
+
   export default {
     name: 'mo-content-p2p',
     data () {
       return {
         busy: '',
         speedBusy: '',
+        clock: Date.now(),
+        clockTimer: null,
         joinForm: { code: '' },
         checkedPorts: [],
         customPortInput: '',
@@ -595,6 +604,16 @@
     created () {
       this.$store.dispatch('p2p/fetchState')
     },
+    mounted () {
+      // speedStale must expire on the clock, not on "whenever the next
+      // state-change happens to render" — links stops pushing when offline
+      this.clockTimer = setInterval(() => {
+        this.clock = Date.now()
+      }, 60000)
+    },
+    beforeDestroy () {
+      clearInterval(this.clockTimer)
+    },
     methods: {
       copyText (text, key) {
         if (!text) {
@@ -604,6 +623,9 @@
         Message.success(this.$t(key))
       },
       async onCreate () {
+        if (this.busy) {
+          return
+        }
         this.busy = 'create'
         try {
           const resp = await this.$store.dispatch('p2p/createGroup')
@@ -617,6 +639,9 @@
         }
       },
       async onJoin () {
+        if (this.busy) {
+          return
+        }
         if (!this.joinForm.code || !this.joinForm.code.trim()) {
           Message.warning(this.$t('p2p.code-required'))
           return
@@ -788,8 +813,11 @@
       },
       latencyText (m) {
         const l = this.linkOf(m)
-        if (!l || l.rtt === null || l.rtt === undefined) {
+        if (!l || l.samples < PROBE_MIN_SAMPLES) {
           return this.$t('p2p.latency-na')
+        }
+        if (l.rtt === null || l.rtt === undefined) {
+          return this.$t('p2p.latency-dead')
         }
         const relay = !this.isOwner && !m.isOwnerRow
         const prefix = relay ? `${this.$t('p2p.relay-tag')} ` : ''
@@ -797,8 +825,13 @@
       },
       latencyClass (m) {
         const l = this.linkOf(m)
-        if (!l || l.rtt === null || l.rtt === undefined) {
+        if (!l || l.samples < PROBE_MIN_SAMPLES) {
           return 'na'
+        }
+        if (l.rtt === null || l.rtt === undefined) {
+          // window full of nothing but losses — the worst verdict a link
+          // can earn, and it must be RED, not a quiet grey dash
+          return 'bad'
         }
         if (l.loss >= 50 || l.rtt >= 300) {
           return 'bad'
@@ -832,7 +865,7 @@
       },
       speedStale (m) {
         const s = (this.speed || {})[m.fp]
-        return !s || (Date.now() - s.ts) > 300000
+        return !s || (this.clock - s.ts) > 300000
       },
       async onSpeedTest (m) {
         if (this.speedBusy) {
@@ -932,7 +965,7 @@
   align-items: center;
   gap: 10px;
   max-width: 960px;
-  margin-bottom: 20px;
+  margin: 0 auto 20px;
   padding: 12px 16px;
   border-radius: $mo-radius-md;
   font-size: 13px;
@@ -974,8 +1007,9 @@
 }
 
 /* 未入群引导态的页顶介绍区：居中一块，图标带主色光晕。
-   下方两卡仍走 .p2p-onboard 的左对齐网格（居中会让标题、警告条、
-   卡片各占一条左边界）。 */
+   hero / 警告条 / 两卡 / 已入群三卡 / 等待审批卡全部锁在同一条 960 居中列
+   ——早年「两卡左对齐」的决定在宽窗下会把 hero 中轴和卡片中轴拉开，
+   放大后图标悬在右卡上方、右侧死区一大片，故统一 margin-inline:auto。 */
 .p2p-hero {
   display: flex;
   flex-direction: column;
@@ -1018,6 +1052,7 @@
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 20px;
   max-width: 960px;
+  margin-inline: auto;
 
   /* 列向 flex：CTA 用 margin-top:auto 贴底，两卡等高时按钮底边对齐 */
   .p2p-card {
@@ -1044,6 +1079,7 @@
   flex-direction: column;
   gap: 20px;
   max-width: 960px;
+  margin-inline: auto;
 }
 
 .p2p-card {
@@ -1168,6 +1204,7 @@
 
 .p2p-joining {
   max-width: 420px;
+  margin-inline: auto;
   text-align: center;
 
   .el-icon-loading {
@@ -1178,15 +1215,18 @@
   }
 }
 
-/* 成员行改用 flex：身份信息（名字/虚拟地址/指纹）聚在左边，
-   状态·链路·操作用 margin-left:auto 推到右边。
-   原来的 grid 第一列是 1.3fr，实测 475px 只装下约 140px 内容，中段空出 335px；
-   stats 列 minmax(110px,auto) 空着也占 110px。 */
+/* Rows are a fixed 6-track grid — same info type = same column, content
+   centered on that column's axis (align/justify below). Tracks 2-6 are FIXED
+   px so every row computes identical tracks: an fr/max-content mix made the
+   fr columns shift whenever a row's actions cell differed (self row has
+   none, pending has two buttons). Missing cells leave an empty fixed track,
+   which still holds the column. */
 .p2p-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 80px 92px 80px 120px 244px;
   align-items: center;
-  gap: 8px 12px;
+  justify-items: center;
+  gap: 8px 10px;
   padding: 10px 12px;
   margin: 0 -12px;
   border-top: 1px solid var(--mo-glass-border);
@@ -1197,12 +1237,31 @@
     background: var(--mo-glass-background-hover);
   }
 
-  .p2p-cell {
-    flex: 0 0 auto;
+  /* ① 姓名 ② 徽章(群主/我) ③ VIP/指纹 ④ 在线状态 ⑤ 延迟+测速 ⑥ 操作（贴右） */
+  .p2p-cell-name {
+    grid-column: 1;
+  }
+
+  .p2p-cell-badges {
+    grid-column: 2;
+  }
+
+  .p2p-cell-vip,
+  .p2p-cell-fp {
+    grid-column: 3;
   }
 
   .p2p-cell-status {
-    margin-left: auto;
+    grid-column: 4;
+  }
+
+  .p2p-cell-stats {
+    grid-column: 5;
+  }
+
+  .p2p-cell-actions {
+    grid-column: 6;
+    justify-self: end;
   }
 
   &.pending {
@@ -1226,20 +1285,52 @@
   }
 
   @media (max-width: 920px) {
+    /* 窄窗降级为两行：上排 姓名|徽章|状态|按钮，下排 VIP·指纹 | 延迟
+       （定宽同理——auto 轨道会随行内容漂移） */
+    grid-template-columns: minmax(0, 1fr) 80px 84px 244px;
+    gap: 8px 10px;
+
+    .p2p-cell-name {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .p2p-cell-badges {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
     .p2p-cell-status {
-      margin-left: 0;
+      grid-column: 3;
+      grid-row: 1;
     }
 
     .p2p-cell-actions {
-      margin-left: auto;
+      grid-column: 4;
+      grid-row: 1;
+    }
+
+    .p2p-cell-vip,
+    .p2p-cell-fp {
+      grid-column: 1;
+      grid-row: 2;
+      justify-self: start;
+    }
+
+    .p2p-cell-stats {
+      grid-column: 2 / span 3;
+      grid-row: 2;
+      justify-self: end;
     }
   }
 }
 
 .p2p-cell {
   min-width: 0;
+  max-width: 100%;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   flex-wrap: wrap;
 }

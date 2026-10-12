@@ -64,6 +64,7 @@ export default {
   'kick-confirm': '确定移除 {{name}} 吗？对方将无法再访问群内服务。',
 
   'latency-na': '—',
+  'latency-dead': '不通',
   'relay-tag': '中继',
   'speed-test': '测速',
   'speed-running': '测速中…',

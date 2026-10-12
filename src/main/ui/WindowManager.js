@@ -307,10 +307,12 @@ export default class WindowManager extends EventEmitter {
   }
 
   sendCommandTo (window, command, ...args) {
-    if (!window) {
+    if (!window || window.isDestroyed()) {
       return
     }
-    logger.info('[Super Cat] send command to:', command, ...args)
+    // payload stays out of the log: p2p-state broadcasts every few seconds
+    // and carries the invite code in plaintext
+    logger.info('[Super Cat] send command to:', command)
     window.webContents.send('command', command, ...args)
   }
 

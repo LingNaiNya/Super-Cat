@@ -64,6 +64,7 @@ export default {
   'kick-confirm': 'Remove {{name}}? They will lose access to the group.',
 
   'latency-na': '—',
+  'latency-dead': 'down',
   'relay-tag': 'relay',
   'speed-test': 'Speed',
   'speed-running': 'Testing…',

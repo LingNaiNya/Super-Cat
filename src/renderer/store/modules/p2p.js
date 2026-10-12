@@ -37,11 +37,24 @@ const actions = {
     commit('UPDATE_STATE', payload)
   },
   async fetchState ({ commit }) {
-    const resp = await ipcRenderer.invoke('p2p:get-state')
-    if (resp && resp.ok) {
-      commit('UPDATE_STATE', resp.state)
+    try {
+      const resp = await ipcRenderer.invoke('p2p:get-state')
+      if (resp && resp.ok) {
+        commit('UPDATE_STATE', resp.state)
+        return resp
+      }
+      // never strand the page on the spinner: show the error bar instead
+      commit('UPDATE_STATE', {
+        loaded: true,
+        lastError: { message: (resp && resp.error) || '无法读取互联状态' }
+      })
+      return resp
+    } catch (err) {
+      commit('UPDATE_STATE', {
+        loaded: true,
+        lastError: { message: err.message }
+      })
     }
-    return resp
   },
   async createGroup ({ commit }, payload) {
     const resp = await call('p2p:create-group', payload)

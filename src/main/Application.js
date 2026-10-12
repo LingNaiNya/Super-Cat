@@ -571,6 +571,15 @@ export default class Application extends EventEmitter {
   }
 
   async quit () {
+    try {
+      // Full quit = leaving the room (an owner's quit dissolves the group;
+      // scheme A — symmetric). Must run before stop() kills the sockets.
+      if (this.p2pManager) {
+        await this.p2pManager.leaveGroup()
+      }
+    } catch (err) {
+      logger.warn('[Super Cat] p2p leave-on-quit failed: ', err.message)
+    }
     await this.stopAllSettled()
     app.exit()
   }

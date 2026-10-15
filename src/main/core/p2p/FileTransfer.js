@@ -38,7 +38,11 @@ import { extname, join } from 'path'
  */
 
 export const FILE_CHUNK = 64 * 1024
-export const FILE_WINDOW = 2 * 1024 * 1024
+// 16 MiB of un-acked bytes in flight: at 350 ms RTT that still permits
+// ~460 Mbps, so on any realistic path the link — not the window — is the
+// limit. Receiver backlog stays bounded by the same credit (worst case one
+// window waiting on a slow disk).
+export const FILE_WINDOW = 16 * 1024 * 1024
 export const FILE_ACK_EVERY = 512 * 1024
 
 // receiver: how long the user has to answer an offer before auto-reject

@@ -11,6 +11,7 @@ export default {
   'update-available-dev-message': '发现新版本 {{version}}。开发模式只验证检查流程，不执行下载安装。',
   'update-not-available-message': '已是最新版',
   'update-downloaded-message': '更新下载完成，应用程序将退出并开始更新...',
+  'update-downloading-message': '更新下载正在进行中，请等待当前下载完成。',
   'update-error-message': '检查更新失败',
   'engine-damaged-message': '引擎损坏，请重新安装 : (',
   'engine-missing-message': '引擎缺失，请重新安装 : (',

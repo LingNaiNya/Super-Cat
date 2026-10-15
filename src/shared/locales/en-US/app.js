@@ -11,6 +11,7 @@ export default {
   'update-available-dev-message': 'A new version {{version}} is available. Dev mode only verifies the check flow — download and install are disabled.',
   'update-not-available-message': 'You are up-to-date!',
   'update-downloaded-message': 'Ready to install...',
+  'update-downloading-message': 'An update download is already in progress — please wait for it to finish.',
   'update-error-message': 'Update Error',
   'engine-damaged-message': 'The engine is damaged, please reinstall : (',
   'engine-missing-message': 'The engine is missing, please reinstall : (',

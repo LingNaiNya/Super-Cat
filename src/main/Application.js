@@ -744,7 +744,11 @@ export default class Application extends EventEmitter {
     const enabled = this.configManager.getUserConfig('auto-check-update')
     this.updateManager = new UpdateManager({
       // Check on every launch while enabled (no interval gating)
-      autoCheck: enabled
+      autoCheck: enabled,
+      // update downloads go through the engine when it is alive
+      engineClient: this.engineClient,
+      // native update dialogs are parented to it so they cannot sink behind
+      getWindow: (name) => this.windowManager.getWindow(name)
     })
     this.handleUpdaterEvents()
   }

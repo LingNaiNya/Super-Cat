@@ -12,7 +12,17 @@ const state = {
   pending: [],
   links: {},
   speed: {},
-  settings: { openPorts: [], receiveTaskPush: true, vipForward: true, manualEndpoint: null },
+  settings: {
+    openPorts: [],
+    receiveTaskPush: true,
+    vipForward: true,
+    fileReceiveEnabled: true,
+    fileReceiveAsk: true,
+    fileReceiveDir: '',
+    fileMaxMb: 10240,
+    manualEndpoint: null
+  },
+  file: { sending: null, receiving: null, offers: [] },
   forward: { enabled: true, listeners: 0, conflicts: [] },
   punch: { last: null, target: null, ts: 0 },
   lastError: null
@@ -128,6 +138,27 @@ const actions = {
   },
   async speedTest ({ commit }, payload) {
     const resp = await call('p2p:speed-test', payload)
+    if (resp.state) {
+      commit('UPDATE_STATE', resp.state)
+    }
+    return resp
+  },
+  async sendFile ({ commit }, payload) {
+    const resp = await call('p2p:send-file', payload)
+    if (resp.state) {
+      commit('UPDATE_STATE', resp.state)
+    }
+    return resp
+  },
+  async cancelFile ({ commit }, payload) {
+    const resp = await call('p2p:cancel-file', payload)
+    if (resp.state) {
+      commit('UPDATE_STATE', resp.state)
+    }
+    return resp
+  },
+  async pickReceiveDir ({ commit }) {
+    const resp = await call('p2p:pick-receive-dir')
     if (resp.state) {
       commit('UPDATE_STATE', resp.state)
     }

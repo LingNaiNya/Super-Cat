@@ -59,7 +59,7 @@ export default {
   'reachable': 'Reachable',
   'unreachable': 'No inbound',
   'reach-unknown': 'Inbound ?',
-  'push': 'Push link',
+  'push': 'Push',
   'kick': 'Kick',
   'kick-confirm': 'Remove {{name}}? They will lose access to the group.',
 
@@ -77,7 +77,7 @@ export default {
   'aria2-port': 'aria2 engine (16800)',
   'custom-port-ph': 'Custom port',
   'add-port': 'Add',
-  'open-ports-desc': 'Only listed ports may be reached by group members through the tunnel; everything else is refused.',
+  'open-ports-desc': 'Only listed ports may be reached by group members through the tunnel; everything else is refused. Enabling the download engine port (16800) lets group members manage local downloads without a password — open it only on purpose.',
   'receive-push': 'Accept pushed download tasks',
 
   'leave': 'Leave group',
@@ -119,5 +119,59 @@ export default {
   'source-none': 'None',
   'no-endpoint': 'unavailable',
 
-  'task-received': 'Received {{count}} download task(s) from {{from}}'
+  'task-received': 'Received {{count}} download task(s) from {{from}}',
+
+  // short member-row label; the hover tooltip carries the full phrase
+  'send-file': 'Send',
+  'send-file-title': 'Send a file to a member',
+  'send-file-confirm': 'Send “{{name}}” to {{to}}? The peer must accept before the transfer starts.',
+  'file-busy-send': 'A file is already being sent',
+
+  'transfer-title': 'File transfers',
+  'transfer-empty': 'No transfers right now — pick “Send file” on a member row.',
+  'transfer-to': '→ {{name}}',
+  'transfer-from': '← {{name}}',
+  'offer-waiting': 'Waiting for your decision in the system dialog · {{size}}',
+  'cancel-file': 'Cancel transfer',
+
+  'phase-starting': 'Preparing…',
+  'phase-hashing': 'Hashing (SHA-256)…',
+  'phase-waiting': 'Waiting for the peer to accept…',
+  'phase-sending': 'Sending…',
+  'phase-receiving': 'Receiving…',
+  'phase-verifying': 'Peer is verifying…',
+  'phase-done': 'Done',
+  'phase-failed': 'Failed',
+
+  'reason-user-rejected': 'The peer rejected the transfer',
+  'reason-timeout': 'Timed out waiting for the peer',
+  'reason-busy': 'The peer already has a transfer running',
+  'reason-receive-off': 'File receiving is turned off on the peer',
+  'reason-too-large': 'File exceeds the receiver size limit',
+  'reason-checksum-mismatch': 'Checksum mismatch — resend the same file to resume',
+  'reason-seq-error': 'Transfer stream out of order',
+  'reason-size-mismatch': 'File size does not match the offer',
+  'reason-name-exhausted': 'No collision-free file name available',
+  'reason-conn-lost': 'Connection lost — resending the same file resumes it',
+  'reason-disk-error': 'Disk read/write failed',
+  'reason-cancelled': 'Cancelled',
+  'reason-error': 'Transfer failed',
+
+  'file-received': 'Received file: {{name}}',
+  'file-sent': 'Sent file: {{name}}',
+  'file-cancelled': 'Transfer cancelled: {{name}}',
+  'file-failed-toast': 'File transfer failed: {{name}} ({{reason}})',
+
+  'file-receive': 'Accept files from members',
+  'file-receive-desc': 'Files land in the receiving directory; an interrupted transfer of the same file resumes automatically.',
+  'file-ask': 'Ask before receiving',
+  'file-ask-desc': 'When off, incoming files within the size limit are accepted without a dialog.',
+  'receive-dir': 'Receiving directory',
+  'choose-dir': 'Change…',
+  'file-limit': 'Max file size: {{mb}} MB',
+
+  'file-offer-title': 'Incoming file',
+  'file-offer-message': '{{from}} wants to send “{{name}}” (about {{size}} MB).',
+  'file-offer-detail': 'Will be saved to: {{dir}}',
+  'receive': 'Receive'
 }

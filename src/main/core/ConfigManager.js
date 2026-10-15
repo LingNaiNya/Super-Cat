@@ -11,7 +11,6 @@ import {
   APP_RUN_MODE,
   APP_THEME,
   EMPTY_STRING,
-  ENGINE_RPC_PORT,
   IP_VERSION,
   LOGIN_SETTING_OPTIONS,
   NGOSANG_TRACKERS_BEST_IP_URL_CDN,
@@ -156,9 +155,15 @@ export default class ConfigManager {
         banned: [],
         'vip-map': {},
         'listen-port': P2P_DEFAULT_LISTEN_PORT,
-        'open-ports': [ENGINE_RPC_PORT],
+        // Sharing the aria2 RPC port lets group members drive this engine
+        // without a password, so it must stay opt-in (see p2p settings card).
+        'open-ports': [],
         'receive-task-push': true,
         'vip-forward': true,
+        'file-receive-enabled': true,
+        'file-receive-ask': true,
+        'file-receive-dir': null,
+        'file-max-mb': 10240,
         'manual-endpoint': null,
         'last-endpoint': null
       }

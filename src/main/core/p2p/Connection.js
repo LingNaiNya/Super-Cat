@@ -9,6 +9,10 @@ const HANDSHAKE_TIMEOUT = 10000
 const NONCE_PREFIX_LEN = 8
 const COUNTER_LEN = 4
 const GCM_TAG_LEN = 16
+// Only these may arrive before the session key exists. Anything else in the
+// clear is a forged control message (directory / kick / task-push / file-offer)
+// and kills the connection instead of being parked for later replay.
+const PRE_SESSION_TYPES = new Set(['hello', 'challenge', 'hand-error'])
 
 /**
  * One authenticated, encrypted peer link over a TCP socket.
@@ -22,7 +26,10 @@ const GCM_TAG_LEN = 16
  *
  * Received messages are offered to `waitFor()` predicates first, then to
  * `message` listeners, then parked in an inbox — so no message can be lost in
- * the gap between finishing the handshake and attaching app listeners.
+ * the gap between finishing the handshake and attaching app listeners. Parked
+ * frames carry the authentication state they arrived under and are never
+ * delivered across that boundary: a cleartext frame injected during the
+ * handshake window cannot be replayed later as an authenticated one.
  */
 export default class Connection extends EventEmitter {
   constructor (socket, identity) {
@@ -78,6 +85,9 @@ export default class Connection extends EventEmitter {
     if (!this.sessionKey || !this.recvNp) {
       const json = payload.toString('utf8')
       const parsed = JSON.parse(json)
+      if (!parsed || typeof parsed.t !== 'string' || !PRE_SESSION_TYPES.has(parsed.t)) {
+        throw new Error('unexpected cleartext message')
+      }
       return { header: parsed, body: null }
     }
     if (payload.length < 12 + GCM_TAG_LEN) {
@@ -141,6 +151,10 @@ export default class Connection extends EventEmitter {
     return this.socket.write(Buffer.concat([len, payload]))
   }
 
+  get cryptoReady () {
+    return !!(this.sessionKey && this.recvNp)
+  }
+
   deliver (msg) {
     const { header, body } = msg
     const waiterIdx = this.waiters.findIndex((w) => {
@@ -160,7 +174,7 @@ export default class Connection extends EventEmitter {
       this.emit('message', header, body)
       return
     }
-    this.inbox.push({ header, body })
+    this.inbox.push({ header, body, authenticated: this.cryptoReady })
   }
 
   on (event, fn) {
@@ -170,16 +184,26 @@ export default class Connection extends EventEmitter {
         if (this.closed) {
           return
         }
-        pending.forEach(({ header, body }) => fn(header, body))
+        // Never replay a parked frame across the authentication boundary:
+        // entries parked before the session existed must not reach the
+        // post-handshake message handler as if they were encrypted.
+        pending.forEach((m) => {
+          if (m.authenticated === this.cryptoReady) {
+            fn(m.header, m.body)
+          }
+        })
       })
     }
     return super.on(event, fn)
   }
 
   waitFor (predicate, timeout = HANDSHAKE_TIMEOUT, label = 'message') {
-    const inQueue = this.inbox.findIndex(({ header, body }) => {
+    const inQueue = this.inbox.findIndex((m) => {
+      if (m.authenticated !== this.cryptoReady) {
+        return false
+      }
       try {
-        return predicate(header, body)
+        return predicate(m.header, m.body)
       } catch (err) {
         return false
       }
@@ -210,6 +234,9 @@ export default class Connection extends EventEmitter {
     this.recvNp = recvNp
     this.sendCounter = 1
     this.recvCounter = 1
+    // The session starts here: anything parked while we were still in the
+    // clear is unauthenticated and must never be delivered later.
+    this.inbox = this.inbox.filter((m) => m.authenticated)
   }
 
   destroy (err) {

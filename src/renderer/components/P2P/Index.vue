@@ -311,8 +311,17 @@
                   <el-button
                     size="mini"
                     plain
+                    :title="$t('p2p.push-title')"
                     @click="openPush(m)"
                   >{{ $t('p2p.push') }}</el-button>
+                  <el-button
+                    size="mini"
+                    plain
+                    :disabled="!!file.sending"
+                    :loading="fileBusyFp === m.fp"
+                    :title="$t('p2p.send-file-title')"
+                    @click="onSendFile(m)"
+                  >{{ $t('p2p.send-file') }}</el-button>
                   <el-button
                     v-if="isOwner"
                     size="mini"
@@ -328,6 +337,86 @@
                 v-if="isOwner && !pending.length && members.length <= 1"
                 class="p2p-desc p2p-members-empty"
               >{{ $t('p2p.members-empty') }}</p>
+            </section>
+
+            <section
+              class="p2p-card mo-stagger-item"
+              style="--mo-enter-delay: 140ms;"
+            >
+              <div class="p2p-card-head">
+                <div class="p2p-card-title">
+                  <span class="p2p-card-icon">
+                    <mo-icon
+                      name="link"
+                      width="16"
+                      height="16"
+                    />
+                  </span>
+                  <h5>{{ $t('p2p.transfer-title') }}</h5>
+                </div>
+              </div>
+
+              <p
+                v-if="!fileRows.length && !(file.offers || []).length"
+                class="p2p-desc"
+              >{{ $t('p2p.transfer-empty') }}</p>
+
+              <div
+                v-for="o in (file.offers || [])"
+                :key="`offer-${o.tid}`"
+                class="p2p-file-row"
+              >
+                <div class="p2p-file-main">
+                  <span
+                    class="p2p-file-name"
+                    :title="o.name"
+                  >{{ o.name }}</span>
+                  <span class="p2p-file-peer">{{ $t('p2p.transfer-from', { name: o.from }) }}</span>
+                </div>
+                <div class="p2p-file-meta">
+                  <span>{{ $t('p2p.offer-waiting', { size: fmtBytes(o.size) }) }}</span>
+                </div>
+              </div>
+
+              <div
+                v-for="row in fileRows"
+                :key="`${row.dir}-${row.tid}`"
+                class="p2p-file-row"
+              >
+                <div class="p2p-file-main">
+                  <span
+                    class="p2p-file-name"
+                    :title="row.savedAs || row.name"
+                  >{{ row.savedAs || row.name }}</span>
+                  <span class="p2p-file-peer">{{ row.dir === 'send'
+                    ? $t('p2p.transfer-to', { name: peerName(row.peer) })
+                    : $t('p2p.transfer-from', { name: peerName(row.peer) }) }}</span>
+                </div>
+                <el-progress
+                  :percentage="filePercent(row)"
+                  :status="fileProgressStatus(row)"
+                  :stroke-width="8"
+                />
+                <div class="p2p-file-meta">
+                  <span>{{ phaseText(row) }}</span>
+                  <span v-if="isLivePhase(row)">{{ fmtBytes(row.transferred) }} / {{ fmtBytes(row.size) }} · {{ fmtSpeed(row) }}</span>
+                  <span
+                    v-else-if="row.reason"
+                    class="fail-text"
+                  >{{ reasonText(row.reason) }}</span>
+                </div>
+                <div
+                  v-if="row.phase !== 'done'"
+                  class="p2p-file-actions"
+                >
+                  <el-button
+                    size="mini"
+                    type="danger"
+                    plain
+                    @click="onCancelFile(row)"
+                  >{{ $t('p2p.cancel-file') }}</el-button>
+                </div>
+              </div>
             </section>
 
             <section
@@ -387,6 +476,44 @@
               </div>
 
               <div class="p2p-field p2p-field-row">
+                <span class="p2p-field-label">{{ $t('p2p.file-receive') }}</span>
+                <el-switch
+                  v-model="fileReceiveEnabled"
+                  @change="onSaveFileReceive"
+                />
+                <p class="p2p-desc">{{ $t('p2p.file-receive-desc') }}</p>
+              </div>
+
+              <div
+                v-if="fileReceiveEnabled"
+                class="p2p-field p2p-field-row"
+              >
+                <span class="p2p-field-label">{{ $t('p2p.file-ask') }}</span>
+                <el-switch
+                  v-model="fileReceiveAsk"
+                  @change="onSaveFileAsk"
+                />
+                <p class="p2p-desc">{{ $t('p2p.file-ask-desc') }}</p>
+              </div>
+
+              <div
+                v-if="fileReceiveEnabled"
+                class="p2p-field p2p-field-row"
+              >
+                <span class="p2p-field-label">{{ $t('p2p.receive-dir') }}</span>
+                <el-button
+                  size="mini"
+                  plain
+                  @click="onPickReceiveDir"
+                >{{ $t('p2p.choose-dir') }}</el-button>
+                <p
+                  class="p2p-desc dir-path"
+                  :title="settings.fileReceiveDir"
+                >{{ settings.fileReceiveDir }}</p>
+                <p class="p2p-desc">{{ $t('p2p.file-limit', { mb: settings.fileMaxMb || 10240 }) }}</p>
+              </div>
+
+              <div class="p2p-field p2p-field-row">
                 <span class="p2p-field-label">{{ $t('p2p.forward-switch') }}</span>
                 <el-switch
                   v-model="vipForward"
@@ -398,7 +525,10 @@
                   :key="`conflict-${c.vip}-${c.port}`"
                   class="p2p-desc conflict-text"
                 >{{ $t('p2p.forward-conflict', { port: c.port }) }}</p>
-                <p class="p2p-desc">{{ punchText }}</p>
+                <p
+                  v-if="punchText"
+                  class="p2p-desc"
+                >{{ punchText }}</p>
                 <p class="p2p-desc">{{ $t('p2p.mc-hint') }}</p>
               </div>
             </section>
@@ -451,6 +581,7 @@
 <script>
   import { clipboard } from 'electron'
   import { mapState } from 'vuex'
+  import { bytesToSize } from '@shared/utils'
   import { Message } from 'element-ui'
 
   /* Icon.register 是 import 副作用且页面为懒加载 chunk，
@@ -471,6 +602,7 @@
       return {
         busy: '',
         speedBusy: '',
+        fileBusyFp: '',
         clock: Date.now(),
         clockTimer: null,
         joinForm: { code: '' },
@@ -478,6 +610,8 @@
         customPortInput: '',
         receivePush: true,
         vipForward: true,
+        fileReceiveEnabled: true,
+        fileReceiveAsk: true,
         pushVisible: false,
         pushTargetFp: '',
         pushTargetName: '',
@@ -497,6 +631,7 @@
         'pending',
         'links',
         'speed',
+        'file',
         'settings',
         'lastError',
         'forward',
@@ -540,7 +675,25 @@
         }
         return map[this.endpoint.source] || this.endpoint.source || ''
       },
+      /**
+       * Proof of actual connectivity (owner: someone is online right now;
+       * member: the link to the owner is up). While that holds, inbound
+       * direct-reach complaints describe a path nobody needs — stay silent.
+       */
+      endpointConnected () {
+        if (!this.inGroup) {
+          return false
+        }
+        if (this.isOwner) {
+          return this.members.some((m) => !m.isSelf && m.online)
+        }
+        const owner = this.members.find((m) => m.isOwnerRow)
+        return !!(owner && owner.online)
+      },
       endpointWarningText () {
+        if (this.endpointConnected) {
+          return ''
+        }
         if (!this.inGroup && this.status !== 'joining') {
           return ''
         }
@@ -570,15 +723,32 @@
       forwardConflicts () {
         return (this.forward && this.forward.conflicts) || []
       },
+      /**
+       * Punch outcome is only newsworthy when it actually blocked someone:
+       * failures toward a member that is offline right now. Success and
+       * "not attempted" are internal plumbing states — silence is the UI.
+       */
       punchText () {
         const p = this.punch
-        if (!p || !p.last) {
-          return `${this.$t('p2p.punch-label')}: ${this.$t('p2p.punch-none')}`
+        if (!p || p.last !== 'fail') {
+          return ''
         }
-        const result = p.last === 'ok'
-          ? this.$t('p2p.punch-ok')
-          : this.$t('p2p.punch-fail')
-        return `${this.$t('p2p.punch-label')}: ${result}`
+        const target = this.members.find((m) => m.fp === p.target)
+        if (target && target.online) {
+          return ''
+        }
+        return `${this.$t('p2p.punch-label')}: ${this.$t('p2p.punch-fail')}`
+      },
+      fileRows () {
+        const rows = []
+        const f = this.file || {}
+        if (f.sending) {
+          rows.push({ dir: 'send', ...f.sending })
+        }
+        if (f.receiving) {
+          rows.push({ dir: 'recv', ...f.receiving })
+        }
+        return rows
       }
     },
     watch: {
@@ -598,6 +768,18 @@
         immediate: true,
         handler (val) {
           this.vipForward = val !== false
+        }
+      },
+      'settings.fileReceiveEnabled': {
+        immediate: true,
+        handler (val) {
+          this.fileReceiveEnabled = val !== false
+        }
+      },
+      'settings.fileReceiveAsk': {
+        immediate: true,
+        handler (val) {
+          this.fileReceiveAsk = val !== false
         }
       }
     },
@@ -847,7 +1029,11 @@
       rowTitle (m) {
         const parts = [m.fp]
         if (!m.isSelf) {
-          parts.push(this.reachText(m))
+          // online = the link works, full stop — inbound-reach verdicts only
+          // matter as a diagnostic once the member is actually gone
+          if (!m.online) {
+            parts.push(this.reachText(m))
+          }
           const l = this.linkOf(m)
           if (l) {
             const relay = !this.isOwner && !m.isOwnerRow
@@ -885,6 +1071,83 @@
         } finally {
           this.speedBusy = ''
         }
+      },
+      /* ---- file transfer ---- */
+      async onSendFile (m) {
+        if (this.file && this.file.sending) {
+          Message.info(this.$t('p2p.file-busy-send'))
+          return
+        }
+        this.fileBusyFp = m.fp
+        try {
+          // main process runs the native pick + confirm dialogs; a null
+          // result just means the user backed out of one of them
+          const resp = await this.$store.dispatch('p2p/sendFile', { target: m.fp })
+          if (!resp.ok) {
+            Message.error(resp.error)
+          }
+        } catch (err) {
+          Message.error(err.message)
+        } finally {
+          this.fileBusyFp = ''
+        }
+      },
+      async onCancelFile (row) {
+        const resp = await this.$store.dispatch('p2p/cancelFile', { dir: row.dir, tid: row.tid })
+        if (!resp.ok) {
+          Message.error(resp.error)
+        }
+      },
+      async onPickReceiveDir () {
+        await this.$store.dispatch('p2p/pickReceiveDir')
+      },
+      async onSaveFileReceive () {
+        const resp = await this.$store.dispatch('p2p/updateSettings', {
+          fileReceiveEnabled: this.fileReceiveEnabled
+        })
+        if (!resp.ok) {
+          Message.error(resp.error)
+        }
+      },
+      async onSaveFileAsk () {
+        const resp = await this.$store.dispatch('p2p/updateSettings', {
+          fileReceiveAsk: this.fileReceiveAsk
+        })
+        if (!resp.ok) {
+          Message.error(resp.error)
+        }
+      },
+      peerName (fp) {
+        const m = this.members.find((x) => x.fp === fp)
+        return m ? m.name : (fp || '?')
+      },
+      isLivePhase (row) {
+        return ['hashing', 'waiting', 'sending', 'receiving', 'verifying'].includes(row.phase)
+      },
+      phaseText (row) {
+        return this.$t(`p2p.phase-${row.phase || 'starting'}`)
+      },
+      reasonText (reason) {
+        return this.$t(`p2p.reason-${reason || 'error'}`)
+      },
+      filePercent (row) {
+        if (!row.size) {
+          return 0
+        }
+        return Math.min(100, Math.round((row.transferred || 0) / row.size * 100))
+      },
+      fileProgressStatus (row) {
+        if (row.phase === 'failed') {
+          return 'exception'
+        }
+        return row.phase === 'done' ? 'success' : undefined
+      },
+      fmtBytes (n) {
+        return bytesToSize(Number(n) || 0, 1)
+      },
+      fmtSpeed (row) {
+        const sec = Math.max(1, (Date.now() - (row.startedAt || Date.now())) / 1000)
+        return `${bytesToSize((row.transferred || 0) / sec, 1)}/s`
       }
     }
   }
@@ -1215,18 +1478,77 @@
   }
 }
 
+/* 文件传输卡片：一行一个传输（发送/接收共用） */
+.p2p-file-row {
+  padding: 10px 0;
+
+  & + .p2p-file-row {
+    border-top: 1px solid var(--mo-glass-border);
+  }
+
+  .el-progress {
+    margin: 8px 0 6px;
+  }
+}
+
+.p2p-file-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.p2p-file-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: var(--mo-text-primary);
+}
+
+.p2p-file-peer {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--mo-text-secondary);
+}
+
+.p2p-file-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--mo-text-secondary);
+
+  .fail-text {
+    color: rgba(var(--p2p-bad-rgb), 1);
+  }
+}
+
+.p2p-file-actions {
+  margin-top: 8px;
+  text-align: right;
+}
+
+.dir-path {
+  word-break: break-all;
+}
+
 /* Rows are a fixed 6-track grid — same info type = same column, content
    centered on that column's axis (align/justify below). Tracks 2-6 are FIXED
    px so every row computes identical tracks: an fr/max-content mix made the
    fr columns shift whenever a row's actions cell differed (self row has
    none, pending has two buttons). Missing cells leave an empty fixed track,
-   which still holds the column. */
+   which still holds the column.
+   Budget at the 1024px default window (row inner 735px): fixed 576 + 5×8 gaps
+   = 616, leaving the name track 119px — every member stays on ONE line. */
 .p2p-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 80px 92px 80px 120px 244px;
+  grid-template-columns: minmax(56px, 1fr) 80px 88px 56px 100px 252px;
   align-items: center;
   justify-items: center;
-  gap: 8px 10px;
+  gap: 8px;
   padding: 10px 12px;
   margin: 0 -12px;
   border-top: 1px solid var(--mo-glass-border);
@@ -1284,11 +1606,11 @@
     border-top: none;
   }
 
-  @media (max-width: 920px) {
-    /* 窄窗降级为两行：上排 姓名|徽章|状态|按钮，下排 VIP·指纹 | 延迟
+  @media (max-width: 760px) {
+    /* 极窄窗才降级为两行：上排 姓名|徽章|状态|按钮，下排 VIP·指纹 | 延迟
        （定宽同理——auto 轨道会随行内容漂移） */
-    grid-template-columns: minmax(0, 1fr) 80px 84px 244px;
-    gap: 8px 10px;
+    grid-template-columns: minmax(0, 1fr) 80px 84px 252px;
+    gap: 8px;
 
     .p2p-cell-name {
       grid-column: 1;
@@ -1343,6 +1665,27 @@
 
 .p2p-cell-actions {
   justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 0;
+
+  .el-button {
+    padding: 5px 10px;
+  }
+
+  .el-button + .el-button {
+    margin-left: 6px;
+  }
+}
+
+/* 延迟在上、测速在下各占一行：100px 定宽下两个 span 同行必换行断字 */
+.p2p-cell-stats {
+  flex-direction: column;
+  gap: 2px;
+
+  .p2p-latency,
+  .p2p-speed {
+    white-space: nowrap;
+  }
 }
 
 /* 在线状态改成圆点 + 文字（沿用仪表盘 .live-dot 的语义）：
@@ -1370,13 +1713,9 @@
   color: var(--mo-text-secondary);
 }
 
+/* layout lives in .p2p-cell-actions (single source of truth);
+   this block only resets the vertical button margin the card CSS adds */
 .p2p-row-actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-
   .el-button {
     margin-top: 0;
   }

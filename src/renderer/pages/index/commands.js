@@ -244,6 +244,26 @@ commands.register('application:update-system-theme', updateSystemTheme)
 commands.register('application:update-theme', updateTheme)
 commands.register('application:update-tray-focused', updateTrayFocused)
 
+const notifyP2pFileEvent = (payload = {}) => {
+  // started events need no toast — the transfer card is already on screen
+  if (payload.started) {
+    return
+  }
+  const name = payload.savedAs || payload.name || ''
+  if (payload.ok) {
+    const key = payload.dir === 'send' ? 'p2p.file-sent' : 'p2p.file-received'
+    Message.success(i18n.t(key, { name }))
+    return
+  }
+  if (payload.reason === 'cancelled') {
+    Message.info(i18n.t('p2p.file-cancelled', { name }))
+    return
+  }
+  const reason = i18n.t(`p2p.reason-${payload.reason || 'error'}`)
+  Message.error(i18n.t('p2p.file-failed-toast', { name, reason }))
+}
+
 commands.register('application:p2p-state', updateP2pState)
 commands.register('application:p2p-task-received', notifyP2pTaskReceived)
 commands.register('application:p2p-notify', notifyP2p)
+commands.register('application:p2p-file-event', notifyP2pFileEvent)

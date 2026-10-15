@@ -182,6 +182,26 @@ export default class Application extends EventEmitter {
     }
   }
 
+  /**
+   * File picker for sending to a peer. The renderer cannot hand us a real
+   * disk path (web pages only get blob urls), so the native open dialog
+   * lives here; the renderer names the peer and waits.
+   */
+  async pickFileForSend () {
+    const win = this.windowManager && this.windowManager.getWindow('index')
+    const options = {
+      title: this.i18n.t('p2p.send-file-title'),
+      properties: ['openFile']
+    }
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || !result.filePaths.length) {
+      return null
+    }
+    return result.filePaths[0]
+  }
+
   initEngineClient () {
     const port = this.configManager.getSystemConfig('rpc-listen-port')
     const secret = this.configManager.getSystemConfig('rpc-secret')
@@ -210,7 +230,52 @@ export default class Application extends EventEmitter {
       this.sendCommandToAll('application:p2p-notify', payload)
     })
 
+    this.p2pManager.on('file-offer', (payload) => {
+      this.confirmFileOffer(payload)
+    })
+
+    this.p2pManager.on('file-event', (payload) => {
+      this.sendCommandToAll('application:p2p-file-event', payload)
+    })
+
     this.p2pManager.init()
+  }
+
+  /**
+   * Native confirm for an inbound file offer: works even when the window is
+   * hidden. The manager auto-rejects after OFFER_TTL anyway, so a stalled
+   * dialog can never hold a transfer slot.
+   */
+  async confirmFileOffer (offer = {}) {
+    const win = this.windowManager && this.windowManager.getWindow('index')
+    const sizeMB = Math.max(1, Math.round((offer.size || 0) / (1024 * 1024)))
+    let accept = false
+    try {
+      const opts = {
+        type: 'question',
+        title: this.i18n.t('p2p.file-offer-title'),
+        message: this.i18n.t('p2p.file-offer-message', {
+          from: offer.from || '?',
+          name: offer.name || '?',
+          size: sizeMB
+        }),
+        detail: this.i18n.t('p2p.file-offer-detail', { dir: this.p2pManager.receiveDir() }),
+        buttons: [this.i18n.t('p2p.receive'), this.i18n.t('p2p.cancel')],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true
+      }
+      const result = win
+        ? await dialog.showMessageBox(win, opts)
+        : await dialog.showMessageBox(opts)
+      accept = result.response === 0
+    } catch (err) {
+      logger.warn('[Super Cat] file offer dialog failed:', err.message)
+    }
+    const res = this.p2pManager.respondFileOffer({ tid: offer.tid, accept })
+    if (res) {
+      this.sendCommandToAll('application:p2p-file-event', { dir: 'recv', tid: offer.tid, started: true })
+    }
   }
 
   initAutoLaunchManager () {
@@ -1052,5 +1117,45 @@ export default class Application extends EventEmitter {
     ipcMain.handle('p2p:update-settings', p2pInvoke((payload) => this.p2pManager.updateSettings(payload)))
     ipcMain.handle('p2p:reset-error', p2pInvoke(() => this.p2pManager.resetError()))
     ipcMain.handle('p2p:speed-test', p2pInvoke((payload) => this.p2pManager.speedTest(payload.target)))
+    ipcMain.handle('p2p:send-file', p2pInvoke(async (payload) => {
+      const path = await this.pickFileForSend()
+      if (!path) {
+        return null
+      }
+      const member = this.p2pManager.getState().members.find((m) => m.fp === payload.target)
+      const confirm = await dialog.showMessageBox({
+        type: 'question',
+        title: this.i18n.t('p2p.send-file-title'),
+        message: this.i18n.t('p2p.send-file-confirm', {
+          name: path.split(/[\\/]/).pop(),
+          to: (member && member.name) || '?'
+        }),
+        buttons: [this.i18n.t('p2p.push-send'), this.i18n.t('p2p.cancel')],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true
+      })
+      if (confirm.response !== 0) {
+        return null
+      }
+      return this.p2pManager.sendFile(payload.target, path)
+    }))
+    ipcMain.handle('p2p:cancel-file', p2pInvoke((payload) => this.p2pManager.cancelFileTransfer(payload)))
+    ipcMain.handle('p2p:pick-receive-dir', p2pInvoke(async () => {
+      const win = this.windowManager && this.windowManager.getWindow('index')
+      const options = {
+        title: this.i18n.t('p2p.receive-dir-title'),
+        defaultPath: this.p2pManager.receiveDir(),
+        properties: ['openDirectory', 'createDirectory']
+      }
+      const picked = win
+        ? await dialog.showOpenDialog(win, options)
+        : await dialog.showOpenDialog(options)
+      if (picked.canceled || !picked.filePaths.length) {
+        return this.p2pManager.getState().settings.fileReceiveDir
+      }
+      await this.p2pManager.updateSettings({ fileReceiveDir: picked.filePaths[0] })
+      return picked.filePaths[0]
+    }))
   }
 }

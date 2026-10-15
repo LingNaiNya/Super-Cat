@@ -77,7 +77,7 @@ export default {
   'aria2-port': 'aria2 下载引擎（16800）',
   'custom-port-ph': '自定义端口',
   'add-port': '添加',
-  'open-ports-desc': '只有列出的端口允许群成员经隧道访问，其余端口一律拒绝。',
+  'open-ports-desc': '只有列出的端口允许群成员经隧道访问，其余端口一律拒绝。勾选下载引擎端口（16800）后，群成员无需密码即可操作本机下载任务，请确认后再开放。',
   'receive-push': '接收成员推送的下载任务',
 
   'leave': '退出群组',
@@ -119,5 +119,58 @@ export default {
   'source-none': '无地址',
   'no-endpoint': '未获取',
 
-  'task-received': '收到 {{from}} 推送的 {{count}} 个下载任务'
+  'task-received': '收到 {{from}} 推送的 {{count}} 个下载任务',
+
+  'send-file': '发送文件',
+  'send-file-title': '发送文件给互联成员',
+  'send-file-confirm': '把「{{name}}」发送给 {{to}}？对方确认接收后才会开始传输。',
+  'file-busy-send': '已有文件正在发送',
+
+  'transfer-title': '文件传输',
+  'transfer-empty': '当前没有传输——在成员行点「发送文件」即可发起。',
+  'transfer-to': '发给 {{name}}',
+  'transfer-from': '来自 {{name}}',
+  'offer-waiting': '等待你在系统弹窗中确认 · {{size}}',
+  'cancel-file': '取消传输',
+
+  'phase-starting': '准备中…',
+  'phase-hashing': '计算校验（SHA-256）…',
+  'phase-waiting': '等待对方确认…',
+  'phase-sending': '发送中…',
+  'phase-receiving': '接收中…',
+  'phase-verifying': '对方正在校验…',
+  'phase-done': '已完成',
+  'phase-failed': '失败',
+
+  'reason-user-rejected': '对方拒绝了传输',
+  'reason-timeout': '等待对方响应超时',
+  'reason-busy': '对方已有传输进行中',
+  'reason-receive-off': '对方未开启文件接收',
+  'reason-too-large': '文件超过接收方大小限制',
+  'reason-checksum-mismatch': '校验不一致，重新发送同一文件可续传',
+  'reason-seq-error': '传输数据乱序',
+  'reason-size-mismatch': '文件大小与约定不符',
+  'reason-name-exhausted': '无法生成不冲突的文件名',
+  'reason-conn-lost': '连接中断——重新发送同一文件会从断点继续',
+  'reason-disk-error': '磁盘读写失败',
+  'reason-cancelled': '已取消',
+  'reason-error': '传输失败',
+
+  'file-received': '已接收文件：{{name}}',
+  'file-sent': '已发送文件：{{name}}',
+  'file-cancelled': '文件传输已取消：{{name}}',
+  'file-failed-toast': '文件传输失败：{{name}}（{{reason}}）',
+
+  'file-receive': '接收成员文件',
+  'file-receive-desc': '文件保存到接收目录；中断后再发同一文件会自动续传。',
+  'file-ask': '接收前总是询问',
+  'file-ask-desc': '关闭后，限额内的来件将自动接收，不再弹窗确认。',
+  'receive-dir': '接收目录',
+  'choose-dir': '更改…',
+  'file-limit': '单文件大小上限：{{mb}} MB',
+
+  'file-offer-title': '收到文件传输请求',
+  'file-offer-message': '{{from}} 想发送「{{name}}」（约 {{size}} MB）。',
+  'file-offer-detail': '将保存到：{{dir}}',
+  'receive': '接收'
 }

@@ -1,7 +1,10 @@
 import { EventEmitter } from 'events'
 import { connect as netConnect, createServer } from 'net'
 import { createSocket as createDgram } from 'dgram'
-import { hostname, networkInterfaces } from 'os'
+import { randomBytes } from 'crypto'
+import { promises as fsp } from 'fs'
+import { basename, join } from 'path'
+import { homedir, hostname, networkInterfaces } from 'os'
 
 import logger from '../Logger'
 import Connection, { clientHandshake, serverHandshake } from './Connection'
@@ -10,6 +13,14 @@ import InviteCode, { formatCode, generateGroupId, sanitizeCode } from './InviteC
 import Endpoint from './Endpoint'
 import VipForwarder from './VipForwarder'
 import {
+  SendSession,
+  ReceiveSession,
+  isFileFrame,
+  sanitizeFileName,
+  OFFER_TTL
+} from './FileTransfer'
+import {
+  ENGINE_RPC_PORT,
   P2P_DEFAULT_LISTEN_PORT,
   P2P_ROLE,
   P2P_STATUS
@@ -42,6 +53,29 @@ const SPEED_STEP_TIMEOUT = 14000
 // Frames the initiator still needs after the waiter that was expecting them has
 // already resolved — they are parked on the connection instead of dropped.
 const SPEED_FRAME_TYPES = new Set(['speed-data', 'speed-done', 'speed-error', 'speed-result'])
+
+// aria2 options a remote member may attach to a pushed task. Where a download
+// lands is the receiver's own business: `dir`/`out` (and every other unknown
+// key) are dropped so a peer cannot write files into arbitrary paths. The
+// Interconnect UI never sends options at all — this only hardens the inbound
+// direction, so legitimate pushes keep working.
+const PUSH_OPTION_ALLOWLIST = new Set([
+  'split',
+  'max-connection-per-server',
+  'min-split-size',
+  'file-allocation',
+  'continue',
+  'auto-save',
+  'bt-max-peers',
+  'seed-ratio',
+  'seed-time'
+])
+const PUSH_OPTIONS_MAX = 16
+
+// A member advertises which local ports peers may tunnel to; those listeners
+// get bound on OUR machine, so the list is validated and capped (a peer could
+// otherwise make us open thousands of VIP sockets).
+const REMOTE_PORTS_MAX = 16
 
 // Punch (classic TCP simultaneous-open; empirical limit on Windows: only one
 // outbound socket may hold the listen port at a time → bursts are serial).
@@ -116,6 +150,12 @@ export default class P2PManager extends EventEmitter {
     })
     this.udpSessions = new Map()
 
+    // file transfer: one concurrent send + one concurrent receive,
+    // plus unanswered offers awaiting the user's decision
+    this.fileSend = null
+    this.fileRecv = null
+    this.fileOffers = new Map()
+
     this.endpoint = this.cfg.get('last-endpoint') || { h: null, p: null, source: 'none', mapped: false }
     this.lastError = null
     this.status = P2P_STATUS.IDLE
@@ -134,6 +174,7 @@ export default class P2PManager extends EventEmitter {
   /* ------------------------------------------------------------------ setup */
 
   init () {
+    this.migrateLegacyOpenPorts()
     this.ensureIdentity()
     this.ensureMemberSeqs()
     if (this.cfg.get('enabled')) {
@@ -143,6 +184,25 @@ export default class P2PManager extends EventEmitter {
         this.status = P2P_STATUS.ERROR
         this.pushState()
       })
+    }
+  }
+
+  /**
+   * Releases up to 1.0.6 defaulted `open-ports` to the aria2 RPC port, which
+   * silently handed every group member password-free control of the download
+   * engine. The default is now opt-in, so a stored value that still equals the
+   * legacy default was never chosen deliberately by the user — drop it and let
+   * the new default apply. Anyone who re-checks the box keeps it.
+   */
+  migrateLegacyOpenPorts () {
+    if (!this.cfg.has || !this.cfg.has('open-ports')) {
+      return
+    }
+    const stored = this.cfg.get('open-ports') || []
+    const untouched = stored.length === 1 && Number(stored[0]) === ENGINE_RPC_PORT
+    if (untouched) {
+      this.cfg.delete('open-ports')
+      logger.info('[Super Cat] p2p legacy aria2 port sharing reset (now opt-in)')
     }
   }
 
@@ -288,6 +348,23 @@ export default class P2PManager extends EventEmitter {
       } catch (err) { /* already gone */ }
     })
     this.udpSessions.clear()
+    // file transfers: abort sessions (their conns die with the pool above)
+    // and drop unanswered offers so no dialog can answer into a dead group
+    this.fileOffers.forEach((o) => {
+      clearTimeout(o.timer)
+      try {
+        o.conn.close()
+      } catch (err) { /* already gone */ }
+    })
+    this.fileOffers.clear()
+    if (this.fileSend) {
+      this.fileSend.abort('conn-lost')
+      this.fileSend = null
+    }
+    if (this.fileRecv) {
+      this.fileRecv.abort('conn-lost')
+      this.fileRecv = null
+    }
   }
 
   /**
@@ -632,7 +709,7 @@ export default class P2PManager extends EventEmitter {
       h: entry.endpoint ? entry.endpoint.h : null,
       p: entry.endpoint ? entry.endpoint.p : null,
       vip: this.assignVip(entry.fp),
-      openPorts: (entry.endpoint && entry.endpoint.openPorts) || [],
+      openPorts: cleanRemotePorts(entry.endpoint && entry.endpoint.openPorts),
       online: true,
       reachable: null,
       lastSeen: Date.now()
@@ -910,7 +987,7 @@ export default class P2PManager extends EventEmitter {
             ...m,
             h: header.h,
             p: header.p,
-            openPorts: header.openPorts || m.openPorts
+            openPorts: header.openPorts ? cleanRemotePorts(header.openPorts) : m.openPorts
           }
           : m
       ))
@@ -1753,7 +1830,7 @@ export default class P2PManager extends EventEmitter {
       return false
     }
     try {
-      await this.engineClient.call('addUri', urls, options)
+      await this.engineClient.call('addUri', urls, sanitizePushOptions(options))
       this.emit('task-received', { from, count: urls.length })
       return true
     } catch (err) {
@@ -2261,6 +2338,14 @@ export default class P2PManager extends EventEmitter {
         this.serveUdpOpen(conn, header)
         return
       }
+      if (header.t === 'file-offer') {
+        // Claim the conn synchronously: the offer may sit in the user dialog
+        // for a minute, and an unclaimed idle conn can be swept or dial-claimed
+        // at any moment.
+        ctx.claiming = true
+        this.handleFileOffer(conn, header)
+        return
+      }
       return
     }
     if (header.t === 'speed-req') {
@@ -2283,6 +2368,12 @@ export default class P2PManager extends EventEmitter {
         } else if (ctx.onEnd) {
           ctx.onEnd()
         }
+      }
+      return
+    }
+    if (ctx.kind === 'file') {
+      if (ctx.fileSession && isFileFrame(header.t)) {
+        ctx.fileSession.onFrame(header, body)
       }
       return
     }
@@ -2316,6 +2407,13 @@ export default class P2PManager extends EventEmitter {
       local.setNoDelay(true)
       conn.ctx.kind = 'tcp'
       conn.ctx.local = local
+      // Same contract as the udp branch: the dispatcher calls ctx.onClose when
+      // the tunnel dies, so the loopback socket must not outlive it.
+      conn.ctx.onClose = () => {
+        try {
+          local.destroy()
+        } catch (err) { /* already gone */ }
+      }
       conn.send({ t: 'dial-result', ok: true })
       logger.info(`[Super Cat] serve dial ok port=${port}`)
 
@@ -2377,6 +2475,244 @@ export default class P2PManager extends EventEmitter {
     } catch (err) {
       conn.send({ t: 'udp-error', reason: err.message })
     }
+  }
+
+  /* ---- file transfer ---- */
+
+  receiveDir () {
+    const saved = this.cfg.get('file-receive-dir')
+    return (typeof saved === 'string' && saved) || join(homedir(), 'Downloads')
+  }
+
+  fileMaxBytes () {
+    const mb = Number(this.cfg.get('file-max-mb'))
+    const clamped = Number.isFinite(mb) && mb > 0 ? Math.min(Math.round(mb), 102400) : 10240
+    return clamped * 1024 * 1024
+  }
+
+  /** Narrow adapter the FileTransfer state machines talk through. */
+  fileLink (conn) {
+    return {
+      send: (header, body) => conn.send(header, body),
+      waitForDrain: () => new Promise((resolve) => {
+        conn.socket.once('drain', resolve)
+        conn.socket.once('close', resolve)
+      }),
+      get closed () {
+        return conn.closed
+      }
+    }
+  }
+
+  fileSnapshots () {
+    return {
+      sending: this.fileSend ? this.fileSend.snapshot() : null,
+      receiving: this.fileRecv ? this.fileRecv.snapshot() : null,
+      offers: [...this.fileOffers.values()].map((o) => ({
+        tid: o.tid,
+        from: o.from,
+        name: o.name,
+        size: o.size,
+        since: o.since
+      }))
+    }
+  }
+
+  /** Sender side: transfer owns its conn until it finishes. */
+  async sendFile (fp, filePath) {
+    if (!this.inGroup) {
+      throw new Error('未加入群组')
+    }
+    if (this.fileSend) {
+      throw new Error('已有文件正在发送')
+    }
+    const member = this.members.find((m) => m.fp === fp && !m.isSelf)
+    if (!member) {
+      throw new Error('成员不存在')
+    }
+    const path = String(filePath || '')
+    if (!path) {
+      throw new Error('未选择文件')
+    }
+    const st = await fsp.stat(path).catch(() => null)
+    if (!st || !st.isFile()) {
+      throw new Error('文件不存在')
+    }
+    if (st.size <= 0) {
+      throw new Error('不能发送空文件')
+    }
+
+    const conn = await this.acquireDataConn(fp)
+    if (this.fileSend) {
+      // a second send won the race while we were dialing — release ours
+      conn.close()
+      throw new Error('已有文件正在发送')
+    }
+    // Pull it out of the reuse pool for the whole transfer: the idle sweep
+    // would otherwise retire this conn mid-stream after DATA_POOL_IDLE.
+    this.dataPoolRemove(fp, conn)
+    const ctx = conn.ctx || { fp }
+    ctx.claiming = false
+    ctx.kind = 'file'
+    conn.ctx = ctx
+
+    const sess = new SendSession({
+      tid: randomBytes(8).toString('hex'),
+      peer: fp,
+      name: basename(path),
+      size: st.size,
+      fid: '',
+      path,
+      link: this.fileLink(conn),
+      onUpdate: () => this.pushState(),
+      onDone: (res) => this.finishFile('send', res, conn)
+    })
+    ctx.fileSession = sess
+    ctx.onClose = () => sess.abort('conn-lost')
+    this.fileSend = sess
+    this.pushState()
+    sess.run()
+    return sess.snapshot()
+  }
+
+  /**
+   * Receiver side, called straight from the dispatcher with ctx.claiming
+   * already set. Policy rejects fire immediately; `ask` parks the offer in
+   * fileOffers (UI confirms, auto-reject after OFFER_TTL).
+   */
+  handleFileOffer (conn, header) {
+    const fp = conn.ctx ? conn.ctx.fp : null
+    const member = this.members.find((m) => m.fp === fp)
+    const from = member ? member.name : fp
+    const reject = (reason) => {
+      const ctx = conn.ctx || {}
+      ctx.claiming = false
+      conn.send({ t: 'file-reject', tid: header.tid, reason })
+      conn.close()
+      this.pushState()
+    }
+    const valid = typeof header.tid === 'string' && header.tid.length > 0 && header.tid.length <= 64 &&
+      typeof header.fid === 'string' && /^[0-9a-f]{64}$/i.test(header.fid) &&
+      Number.isInteger(header.size) && header.size > 0 &&
+      typeof header.name === 'string' && header.name.length > 0 && header.name.length <= 255
+    if (!valid) {
+      reject('bad-offer')
+      return
+    }
+    if (!this.cfg.get('file-receive-enabled')) {
+      reject('receive-off')
+      return
+    }
+    if (header.size > this.fileMaxBytes()) {
+      reject('too-large')
+      return
+    }
+    if (this.fileRecv || this.fileOffers.size >= 4) {
+      reject('busy')
+      return
+    }
+    // ours now — out of the pool so nothing claims or sweeps it while we ask
+    this.dataPoolRemove(fp, conn)
+    const meta = {
+      tid: header.tid,
+      fid: header.fid,
+      name: sanitizeFileName(header.name),
+      size: header.size,
+      fp,
+      from
+    }
+    if (this.cfg.get('file-receive-ask') === false) {
+      this.beginReceive(conn, meta)
+      return
+    }
+    const offer = { ...meta, conn, since: Date.now(), timer: null }
+    offer.timer = setTimeout(() => {
+      if (this.fileOffers.get(offer.tid) === offer) {
+        this.fileOffers.delete(offer.tid)
+        logger.info('[Super Cat] file offer unanswered — auto-rejected')
+        reject('timeout')
+      }
+    }, OFFER_TTL)
+    this.fileOffers.set(offer.tid, offer)
+    this.emit('file-offer', { tid: offer.tid, from, name: offer.name, size: offer.size })
+    this.pushState()
+  }
+
+  /** User (or the ask=false policy) accepted an offer: start receiving. */
+  beginReceive (conn, meta) {
+    const ctx = conn.ctx || { fp: meta.fp }
+    const sess = new ReceiveSession({
+      tid: meta.tid,
+      peer: meta.fp,
+      name: meta.name,
+      size: meta.size,
+      fid: meta.fid,
+      dir: this.receiveDir(),
+      link: this.fileLink(conn),
+      onUpdate: () => this.pushState(),
+      onDone: (res) => this.finishFile('recv', res, conn)
+    })
+    ctx.claiming = false
+    ctx.kind = 'file'
+    ctx.fileSession = sess
+    ctx.onClose = () => sess.abort('conn-lost')
+    conn.ctx = ctx
+    this.fileRecv = sess
+    if (conn.closed) {
+      // the sender walked away while the user was deciding — say so now
+      // instead of letting the session wait out BEGIN_WAIT
+      sess.abort('conn-lost')
+    }
+    sess.start().catch((err) => {
+      logger.warn('[Super Cat] file receive failed to start:', err.message)
+    })
+    this.pushState()
+    return sess.snapshot()
+  }
+
+  /** Renderer answer to a parked offer: accept → begin, refuse → reject. */
+  respondFileOffer (payload = {}) {
+    const offer = this.fileOffers.get(payload.tid)
+    if (!offer) {
+      // already answered, auto-rejected, or the group went down
+      return null
+    }
+    this.fileOffers.delete(offer.tid)
+    clearTimeout(offer.timer)
+    if (payload.accept !== true || this.fileRecv) {
+      const ctx = offer.conn.ctx || {}
+      ctx.claiming = false
+      offer.conn.send({ t: 'file-reject', tid: offer.tid, reason: this.fileRecv ? 'busy' : 'user-rejected' })
+      offer.conn.close()
+      this.pushState()
+      return null
+    }
+    return this.beginReceive(offer.conn, offer)
+  }
+
+  /** User cancel on an in-flight transfer (or a hard teardown). */
+  cancelFileTransfer (payload = {}) {
+    const sess = payload.dir === 'recv' ? this.fileRecv : this.fileSend
+    if (sess && sess.tid === payload.tid) {
+      sess.abort('cancelled')
+      return sess.snapshot()
+    }
+    return null
+  }
+
+  finishFile (dirKind, res, conn) {
+    const slot = dirKind === 'send' ? 'fileSend' : 'fileRecv'
+    if (this[slot] && this[slot].tid === res.tid) {
+      this[slot] = null
+    }
+    // transfers own their conn — release it either way
+    try {
+      conn.close()
+    } catch (err) {
+      /* already gone */
+    }
+    this.emit('file-event', { dir: dirKind, ...res })
+    this.pushState()
   }
 
   /* ---- outbound UDP sessions (ride a data connection) ---- */
@@ -2719,6 +3055,20 @@ export default class P2PManager extends EventEmitter {
       this.cfg.set('vip-forward', patch.vipForward)
       this.vipForwarder.reconcile()
     }
+    if (typeof patch.fileReceiveEnabled === 'boolean') {
+      this.cfg.set('file-receive-enabled', patch.fileReceiveEnabled)
+    }
+    if (typeof patch.fileReceiveAsk === 'boolean') {
+      this.cfg.set('file-receive-ask', patch.fileReceiveAsk)
+    }
+    if (patch.fileReceiveDir !== undefined) {
+      this.cfg.set('file-receive-dir',
+        typeof patch.fileReceiveDir === 'string' && patch.fileReceiveDir ? patch.fileReceiveDir : null)
+    }
+    if (patch.fileMaxMb !== undefined) {
+      const mb = Number(patch.fileMaxMb)
+      this.cfg.set('file-max-mb', Number.isFinite(mb) && mb > 0 ? Math.min(Math.round(mb), 102400) : 10240)
+    }
     if (patch.manualEndpoint !== undefined) {
       this.cfg.set('manual-endpoint', patch.manualEndpoint && patch.manualEndpoint.h
         ? { h: patch.manualEndpoint.h }
@@ -2782,6 +3132,7 @@ export default class P2PManager extends EventEmitter {
       })),
       links: this.linksSnapshot(),
       speed: Object.fromEntries(this.speedResults),
+      file: this.fileSnapshots(),
       punch: { ...this.punch },
       forward: {
         enabled: !!this.cfg.get('vip-forward'),
@@ -2792,6 +3143,10 @@ export default class P2PManager extends EventEmitter {
         openPorts: this.cfg.get('open-ports') || [],
         receiveTaskPush: !!this.cfg.get('receive-task-push'),
         vipForward: !!this.cfg.get('vip-forward'),
+        fileReceiveEnabled: this.cfg.get('file-receive-enabled') !== false,
+        fileReceiveAsk: this.cfg.get('file-receive-ask') !== false,
+        fileReceiveDir: this.receiveDir(),
+        fileMaxMb: Number(this.cfg.get('file-max-mb')) || 10240,
         manualEndpoint: this.cfg.get('manual-endpoint') || null
       },
       lastError: this.lastError
@@ -2837,6 +3192,48 @@ export default class P2PManager extends EventEmitter {
     }
     return this.getState()
   }
+}
+
+/**
+ * Keep only whitelisted, primitive-valued options from a remote push.
+ * Unknown keys, objects and arrays are ignored (a pushed task can never carry
+ * a path or a file name), and the option count is capped.
+ */
+function sanitizePushOptions (raw) {
+  const out = {}
+  if (!raw || typeof raw !== 'object') {
+    return out
+  }
+  for (const [key, value] of Object.entries(raw)) {
+    if (!PUSH_OPTION_ALLOWLIST.has(key)) {
+      continue
+    }
+    if (typeof value === 'string' || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))) {
+      out[key] = String(value)
+    }
+    if (Object.keys(out).length >= PUSH_OPTIONS_MAX) {
+      break
+    }
+  }
+  return out
+}
+
+/** Normalise a peer-advertised port list: valid ports only, deduped, capped. */
+function cleanRemotePorts (raw) {
+  if (!Array.isArray(raw)) {
+    return []
+  }
+  const out = []
+  for (const n of raw) {
+    const port = Number(n)
+    if (Number.isInteger(port) && port > 0 && port < 65536 && !out.includes(port)) {
+      out.push(port)
+    }
+    if (out.length >= REMOTE_PORTS_MAX) {
+      break
+    }
+  }
+  return out
 }
 
 function sleep (ms) {

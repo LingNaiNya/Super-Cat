@@ -26,6 +26,12 @@
           @click="item.action()"
         >
           <mo-icon :name="item.icon" width="20" height="20" />
+          <!-- 待审批申请：群主停在别的页面时也要看得见（原来只有 3 秒 toast） -->
+          <span
+            v-if="item.badge"
+            class="rail-badge"
+            :title="item.badgeTitle"
+          >{{ item.badge }}</span>
         </button>
       </nav>
 
@@ -85,6 +91,11 @@
        * never disagree about the order, and so pages are matched by key rather
        * than by comparing route strings in the template.
        */
+      /** Parked join requests (owner side): drives the rail badge on the p2p item. */
+      pendingCount () {
+        const p2p = this.$store.state.p2p
+        return p2p && Array.isArray(p2p.pending) ? p2p.pending.length : 0
+      },
       topItems () {
         return [
           {
@@ -103,6 +114,10 @@
             key: 'p2p',
             icon: 'menu-p2p',
             label: this.$t('subnav.p2p'),
+            badge: this.pendingCount ? String(this.pendingCount) : '',
+            badgeTitle: this.pendingCount
+              ? this.$t('p2p.pending-badge', { count: this.pendingCount })
+              : '',
             action: () => this.nav('/p2p')
           },
           {
@@ -213,6 +228,24 @@
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
   transform: translateY(calc(var(--rail-offset, 0) * (var(--rail-item-size) + var(--rail-item-gap))));
   transition: transform $mo-duration-base $mo-ease-emphasized;
+  pointer-events: none;
+}
+
+/* 待审批数量：贴在 p2p 图标右上角（原是 3 秒 toast，错过就看不见） */
+.rail-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  box-sizing: border-box;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: $mo-radius-pill;
+  background: #f56c6c;
+  color: #fff;
+  font-size: 9px;
+  line-height: 14px;
+  text-align: center;
   pointer-events: none;
 }
 

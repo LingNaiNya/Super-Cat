@@ -2,6 +2,8 @@ import { ipcRenderer } from 'electron'
 
 const state = {
   loaded: false,
+  // snapshot version: older payloads must never overwrite newer state
+  seq: 0,
   status: 'idle',
   role: '',
   enabled: false,
@@ -9,6 +11,7 @@ const state = {
   group: { gid: null, name: '', code: null, codeText: null },
   endpoint: { h: null, p: null, source: 'none', mapped: false, lanOnly: false, warning: null, listenPort: 0 },
   members: [],
+  maxMembers: 0,
   pending: [],
   links: {},
   speed: {},
@@ -22,7 +25,11 @@ const state = {
     fileMaxMb: 10240,
     manualEndpoint: null
   },
-  file: { sending: null, receiving: null, offers: [] },
+  file: { sending: null, receiving: null, offers: [], recent: [] },
+  // main-process "someone is already doing this" flags
+  busy: { speed: false, send: false, recv: false },
+  // counters for support (see P2PManager.getState)
+  health: {},
   forward: { enabled: true, listeners: 0, conflicts: [] },
   punch: { last: null, target: null, ts: 0 },
   lastError: null
@@ -31,6 +38,12 @@ const state = {
 const mutations = {
   UPDATE_STATE (state, payload) {
     if (!payload) {
+      return
+    }
+    // Two writers feed this (the 150ms push and every action's response). An
+    // out-of-order older snapshot used to roll the UI back (a handled request
+    // reappearing, a rotated code reverting), so drop anything not newer.
+    if (typeof payload.seq === 'number' && payload.seq <= (state.seq || 0) && state.loaded) {
       return
     }
     Object.assign(state, payload)
@@ -159,6 +172,13 @@ const actions = {
   },
   async pickReceiveDir ({ commit }) {
     const resp = await call('p2p:pick-receive-dir')
+    if (resp.state) {
+      commit('UPDATE_STATE', resp.state)
+    }
+    return resp
+  },
+  async clearParts ({ commit }) {
+    const resp = await call('p2p:clear-parts')
     if (resp.state) {
       commit('UPDATE_STATE', resp.state)
     }

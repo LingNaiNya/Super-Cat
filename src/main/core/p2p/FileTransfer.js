@@ -44,6 +44,9 @@ export const FILE_CHUNK = 64 * 1024
 // window waiting on a slow disk).
 export const FILE_WINDOW = 16 * 1024 * 1024
 export const FILE_ACK_EVERY = 512 * 1024
+// Receiver-side flood guard: frames per queue beyond the byte window are also
+// bounded, so a stream of tiny frames cannot dodge the byte accounting.
+const QUEUE_MAX_FRAMES = 4096
 
 // receiver: how long the user has to answer an offer before auto-reject
 export const OFFER_TTL = 60000
@@ -127,6 +130,16 @@ export function metaPathFor (partPath) {
 }
 
 /**
+ * Is this file one of OURS? Receive parts are `<name>.<fid[0:12]>.part`, and the
+ * receive directory defaults to `~/Downloads` — where Firefox, youtube-dl and
+ * others also keep `.part` files. Anything shared must use this check before it
+ * deletes, or a stranger's half-download goes with it.
+ */
+export function isOurPartName (name) {
+  return /\.[0-9a-f]{12}\.part$/i.test(String(name || ''))
+}
+
+/**
  * Pure resume decision: reuse an interrupted part only when the sidecar
  * still describes this exact file; the usable offset is capped at the
  * announced total size.
@@ -183,10 +196,23 @@ export const fsIo = {
     return fsp.rename(from, to)
   },
 
-  /** Atomically take a final name; false means "already there, try next". */
+  /**
+   * Atomically take a final name. `false` means "already taken, try the next
+   * candidate"; anything else (permission, disk full, name too long) must not
+   * be mistaken for a clash — that used to spin the rename loop 1000 times and
+   * then report a bogus "name exhausted".
+   */
   claim (path) {
     return fsp.open(path, 'wx')
-      .then((h) => h.close().then(() => true, () => true), () => false)
+      .then(
+        (handle) => handle.close().then(() => true, () => true),
+        (err) => {
+          if (err && err.code === 'EEXIST') {
+            return false
+          }
+          throw fileError(err && err.code === 'ENOSPC' ? 'disk-full' : 'disk-error')
+        }
+      )
   },
 
   openReader (path) {
@@ -308,6 +334,7 @@ class FileSession {
     this.waiters = []
     this.reader = null
     this.writer = null
+    this.draining = false
     this.lastPushAt = 0
     this.lastPushPhase = ''
   }
@@ -344,6 +371,12 @@ class FileSession {
     } catch (err) {
       /* link died mid-frame — the run loop notices via abort('conn-lost') */
     }
+  }
+
+  /** Backpressure released (or the socket died): let the send loop continue. */
+  endDrain () {
+    this.draining = false
+    this.wake()
   }
 
   _await (check, timeout, label) {
@@ -486,7 +519,7 @@ function classifyReason (reason) {
   const known = [
     'user-rejected', 'timeout', 'busy', 'receive-off', 'too-large',
     'checksum-mismatch', 'seq-error', 'size-mismatch', 'name-exhausted',
-    'conn-lost', 'disk-error', 'cancelled'
+    'conn-lost', 'disk-error', 'cancelled', 'disk-full', 'no-space', 'bad-offer', 'flood'
   ]
   if (known.includes(reason)) {
     return reason
@@ -591,8 +624,17 @@ export class SendSession extends FileSession {
           throw fileError('disk-error')
         }
         if (!this.link.send({ t: 'file-data', tid: this.tid, off: pos }, buf)) {
+          // Backpressure goes through the same abortable machinery as every
+          // other wait. Waiting on the bare drain promise used to park the
+          // sender for good when the peer stopped reading: abort() (and the
+          // user's cancel) could not wake it, so the send slot stayed occupied
+          // until the app restarted. ACK_WAIT bounds even a dead socket.
+          this.draining = true
+          this.link.waitForDrain()
+            .then(() => this.endDrain())
+            .catch(() => this.endDrain())
           // eslint-disable-next-line no-await-in-loop
-          await this.link.waitForDrain()
+          await this._await(() => !this.draining || this.killed(), ACK_WAIT, 'drain')
           if (this.link.closed) {
             throw fileError('conn-lost')
           }
@@ -640,6 +682,7 @@ export class ReceiveSession extends FileSession {
     this.fileEnd = null
     this.kill = null
     this.queue = [] // [header, body] frames awaiting the pump, window-bounded
+    this.queuedBytes = 0
     this.written = 0
     this.lastAck = 0
     this.partPath = partPathFor(opts.dir, opts.name, opts.fid)
@@ -648,6 +691,18 @@ export class ReceiveSession extends FileSession {
   handleFrame (header, body) {
     const t = header.t
     if (t === 'file-data') {
+      // The credit window is enforced by the sender only, so the receiver keeps
+      // its own books: a peer that ignores the window (or ignores acks) used to
+      // be able to balloon this queue until the process died.
+      const size = body ? body.length : 0
+      if (size > FILE_CHUNK * 2 || this.queuedBytes + size > FILE_WINDOW + FILE_CHUNK * 2 ||
+          this.queue.length >= QUEUE_MAX_FRAMES) {
+        this.queue.length = 0
+        this.queuedBytes = 0
+        this.kill = { t: 'file-error', reason: 'flood' }
+        return
+      }
+      this.queuedBytes += size
       this.queue.push([header, body])
     } else if (t === 'file-end') {
       this.queue.push([header, body])
@@ -700,6 +755,13 @@ export class ReceiveSession extends FileSession {
         throw fileError(this.kill.reason || 'cancelled')
       }
       const beginOffset = Math.max(0, Math.min(Number(this.begin.offset) || 0, this.size))
+      // The sender may legitimately fall back below what we offered (its copy no
+      // longer matches our prefix), but it must never claim an offset beyond it:
+      // the old code grew the .part to that offset and hashed it, which a hostile
+      // peer could repeat to fill the disk.
+      if (beginOffset > this.offsetOffered) {
+        throw fileError('seq-error')
+      }
       // beginOffset < offered offset means the sender's copy no longer matches
       // our prefix (or the part was longer than the file) — truncateTo below
       // drops whatever the sender will not resend.
@@ -787,6 +849,7 @@ export class ReceiveSession extends FileSession {
       throw fileError('size-mismatch')
     }
     await this.writer.write(body, this.written)
+    this.queuedBytes = Math.max(0, this.queuedBytes - body.length)
     this.written += body.length
     this.transferred = this.written
     if (this.written - this.lastAck >= FILE_ACK_EVERY) {
@@ -802,13 +865,21 @@ export class ReceiveSession extends FileSession {
     const stem = this.name.slice(0, this.name.length - ext.length)
     for (let i = 0; i < 1000; i++) {
       const candidate = i === 0 ? this.name : `${stem} (${i})${ext}`
+      const full = join(this.dir, candidate)
       // eslint-disable-next-line no-await-in-loop
-      const got = await this.io.claim(join(this.dir, candidate))
+      const got = await this.io.claim(full)
       if (got) {
-        // the placeholder we just created is ours; rename replaces it on both
-        // Windows and POSIX, so no peer receive can lose data to a race here
-        // eslint-disable-next-line no-await-in-loop
-        await this.io.rename(this.partPath, join(this.dir, candidate))
+        try {
+          // the placeholder we just created is ours; rename replaces it on both
+          // Windows and POSIX, so no peer receive can lose data to a race here
+          // eslint-disable-next-line no-await-in-loop
+          await this.io.rename(this.partPath, full)
+        } catch (err) {
+          // never leave a 0-byte placeholder (or a half-way .part) behind when
+          // the rename itself fails
+          await this.io.unlink(full).catch(() => {})
+          throw fileError('disk-error')
+        }
         return candidate
       }
     }

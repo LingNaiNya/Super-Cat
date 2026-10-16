@@ -4,6 +4,45 @@ import { createSocket as createDgram } from 'dgram'
 import logger from '../Logger'
 
 const RECONCILE_DEBOUNCE = 400
+// Hard ceilings on what a (possibly hostile) hub can make us listen for: the
+// member list it sends decides how many local sockets we open.
+const MAX_FORWARD_TARGETS = 64
+const MAX_FORWARD_LISTENERS = 128
+
+/**
+ * Resume `target` once `socket` drains, dropping the listener if the socket
+ * closes first — a paused pipe would otherwise keep a dead handler (and its
+ * closure) on a socket that is being torn down.
+ */
+function resumeOnDrain (socket, target) {
+  const done = () => {
+    socket.removeListener('drain', done)
+    socket.removeListener('close', done)
+    target.resume()
+  }
+  socket.once('drain', done)
+  socket.once('close', done)
+}
+
+/**
+ * Loopback VIPs only. This forwarder binds `vip:port` on the local machine, so
+ * a hub handing out anything else (0.0.0.0, a LAN address) would publish the
+ * tunnel ports to the whole network — second gate behind the manager's own
+ * check, because this is the code that actually calls listen().
+ */
+function validVip (vip) {
+  const match = /^127\.87\.0\.(\d{1,3})$/.exec(String(vip || ''))
+  if (!match) {
+    return false
+  }
+  const last = Number(match[1])
+  return last >= 2 && last <= 254
+}
+
+function isLoopbackAddress (address) {
+  const addr = String(address || '')
+  return addr === '::1' || addr.startsWith('127.')
+}
 
 /**
  * Loopback virtual-LAN forwarder: binds `<member-vip>:<port>` locally for
@@ -58,13 +97,27 @@ export default class VipForwarder {
       return
     }
 
+    const conflicts = []
     const desired = new Map()
-    targets.forEach((t) => {
+    let truncated = 0
+    targets.slice(0, MAX_FORWARD_TARGETS).forEach((t) => {
+      const ok = !t.vip || validVip(t.vip)
+      if (!ok) {
+        conflicts.push({ vip: String(t.vip), port: 0, reason: 'invalid-vip' })
+      }
+      const vip = ok ? (t.vip || null) : null
       ;(t.ports || []).forEach((port) => {
+        if (desired.size >= MAX_FORWARD_LISTENERS) {
+          truncated += 1
+          return
+        }
         const key = `${t.fp}:${port}`
-        desired.set(key, { fp: t.fp, vip: t.vip, port })
+        desired.set(key, { fp: t.fp, vip, port })
       })
     })
+    if (targets.length > MAX_FORWARD_TARGETS || truncated) {
+      logger.warn(`[Super Cat] vip forwarder truncated: targets=${targets.length} listeners=${desired.size}`)
+    }
 
     // close listeners that are no longer desired
     this.tcpListeners.forEach((entry, key) => {
@@ -78,7 +131,6 @@ export default class VipForwarder {
       }
     })
 
-    const conflicts = []
     desired.forEach((spec, key) => {
       if (!spec.vip) {
         return
@@ -94,6 +146,10 @@ export default class VipForwarder {
   }
 
   openTcp (key, spec, conflicts) {
+    if (!validVip(spec.vip)) {
+      conflicts.push({ vip: String(spec.vip), port: spec.port, reason: 'invalid-vip' })
+      return
+    }
     const server = createServer((socket) => {
       socket.setNoDelay(true)
       Promise.resolve()
@@ -121,6 +177,10 @@ export default class VipForwarder {
   }
 
   openUdpSocket (key, spec, conflicts) {
+    if (!validVip(spec.vip)) {
+      conflicts.push({ vip: String(spec.vip), port: spec.port, reason: 'invalid-vip', udp: true })
+      return
+    }
     const sock = createDgram('udp4')
     let lastRinfo = null
     let session = null
@@ -132,7 +192,9 @@ export default class VipForwarder {
       try {
         session = this.openUdp(spec.fp, spec.port)
         session.onData = (bytes) => {
-          if (lastRinfo) {
+          // Reply to the loopback caller only: this socket must never become a
+          // relay that answers whoever happens to send it a datagram.
+          if (lastRinfo && isLoopbackAddress(lastRinfo.address)) {
             sock.send(bytes, lastRinfo.port, lastRinfo.address)
           }
         }
@@ -168,7 +230,7 @@ export default class VipForwarder {
     stream.on('data', (chunk) => {
       if (!socket.write(chunk)) {
         stream.pause()
-        socket.once('drain', () => stream.resume())
+        resumeOnDrain(socket, stream)
       }
     })
     stream.on('close', () => {
@@ -178,7 +240,7 @@ export default class VipForwarder {
     socket.on('data', (chunk) => {
       if (!stream.write(chunk)) {
         socket.pause()
-        stream.once('drain', () => socket.resume())
+        resumeOnDrain(stream, socket)
       }
     })
     socket.on('end', () => {

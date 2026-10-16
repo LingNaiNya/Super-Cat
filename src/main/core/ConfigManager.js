@@ -144,6 +144,11 @@ export default class ConfigManager {
       defaults: {
         enabled: false,
         identity: null,
+        // sealed copies (safeStorage/DPAPI) of the identity and the group sec;
+        // the plaintext slots above stay as the fallback/migration source
+        'identity-sealed': '',
+        'identity-sealed-orphan': '',
+        'sec-sealed': '',
         role: '',
         gid: '',
         sec: '',
@@ -153,6 +158,10 @@ export default class ConfigManager {
         'owner-ep': null,
         members: [],
         banned: [],
+        // content signature of the roster this node last adopted (members only)
+        'dir-rev': '',
+        // issue time of the currently shared invite code (owner only)
+        'code-iat': 0,
         'vip-map': {},
         'listen-port': P2P_DEFAULT_LISTEN_PORT,
         // Sharing the aria2 RPC port lets group members drive this engine

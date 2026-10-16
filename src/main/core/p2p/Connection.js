@@ -5,6 +5,11 @@ import Identity from './Identity'
 import logger from '../Logger'
 
 const MAX_FRAME = 1024 * 1024
+// Pre-authentication bounds: this socket can be reached by anyone who can dial
+// the port, so what an unidentified peer may push us is capped hard.
+const MAX_PREAUTH_BYTES = 64 * 1024
+// Post-handshake parking (the gap before app listeners attach) is bounded too.
+const MAX_INBOX = 64
 const HANDSHAKE_TIMEOUT = 10000
 const NONCE_PREFIX_LEN = 8
 const COUNTER_LEN = 4
@@ -45,6 +50,7 @@ export default class Connection extends EventEmitter {
     this.sendCounter = 1
     this.recvCounter = 1
     this.recvBuf = Buffer.alloc(0)
+    this.preAuthBytes = 0
     this.inbox = []
     this.waiters = []
     this.meta = {}
@@ -57,6 +63,16 @@ export default class Connection extends EventEmitter {
   onData (chunk) {
     if (this.closed) {
       return
+    }
+    if (!this.cryptoReady) {
+      // Let an unidentified peer send only what a handshake needs: the 10s
+      // timeout used to be the sole bound, so a stranger could stream megabytes
+      // of cleartext at a port that is listening on every interface.
+      this.preAuthBytes += chunk.length
+      if (this.preAuthBytes > MAX_PREAUTH_BYTES) {
+        this.destroy(new Error('pre-auth flood'))
+        return
+      }
     }
     this.recvBuf = this.recvBuf.length ? Buffer.concat([this.recvBuf, chunk]) : chunk
     while (this.recvBuf.length >= 4) {
@@ -174,7 +190,17 @@ export default class Connection extends EventEmitter {
       this.emit('message', header, body)
       return
     }
-    this.inbox.push({ header, body, authenticated: this.cryptoReady })
+    if (!this.cryptoReady) {
+      // Nothing legitimate is parked before the session exists: the handshake
+      // only exchanges messages a waiter is already expecting, so anything else
+      // is either a violation or a flood. Parking them let an unidentified peer
+      // balloon this array with 1 MiB frames.
+      return
+    }
+    this.inbox.push({ header, body, authenticated: true })
+    if (this.inbox.length > MAX_INBOX) {
+      this.inbox.splice(0, this.inbox.length - MAX_INBOX)
+    }
   }
 
   on (event, fn) {
@@ -287,6 +313,18 @@ function counterBuf (n) {
   return buf
 }
 
+/**
+ * Localised text is useless to a caller that has to *decide* something (the
+ * member side must tell "the hub removed me" from "the network hiccuped"), so
+ * rejections carry a stable `code` next to the human-readable `reason`.
+ */
+function handError (frame, fallback) {
+  const err = new Error(frame.reason || fallback)
+  err.reason = frame.reason || null
+  err.code = frame.code || null
+  return err
+}
+
 function transcript (prefix, fields) {
   return `${prefix}|${fields.join('|')}`
 }
@@ -323,7 +361,7 @@ export async function clientHandshake (conn, { gid, mode, sec, expectPub }) {
     'challenge'
   )
   if (challenge.t === 'hand-error') {
-    throw new Error(challenge.reason || 'handshake rejected')
+    throw handError(challenge, 'handshake rejected')
   }
   if (challenge.spub !== expectPub) {
     throw new Error('peer identity does not match expected key')
@@ -351,7 +389,7 @@ export async function clientHandshake (conn, { gid, mode, sec, expectPub }) {
     'ready'
   )
   if (ready.t === 'hand-error') {
-    throw new Error(ready.reason || 'handshake rejected')
+    throw handError(ready, 'handshake rejected')
   }
   return { fp: ready.fp, mode: ready.mode || mode }
 }
@@ -369,17 +407,17 @@ export async function serverHandshake (conn, { gid, getSec, lookupMember }) {
     'hello'
   )
   if (hello.v !== 1 || hello.gid !== gid) {
-    conn.send({ t: 'hand-error', reason: 'group mismatch' })
+    conn.send({ t: 'hand-error', reason: 'group mismatch', code: 'group-mismatch' })
     throw new Error('peer is not in this group')
   }
   if (!hello.cpub || !hello.cx || !hello.np) {
-    conn.send({ t: 'hand-error', reason: 'malformed hello' })
+    conn.send({ t: 'hand-error', reason: 'malformed hello', code: 'bad-hello' })
     throw new Error('malformed hello')
   }
   const mode = hello.mode
   const recvNpC = Buffer.from(hello.np, 'base64')
   if (recvNpC.length !== NONCE_PREFIX_LEN) {
-    conn.send({ t: 'hand-error', reason: 'bad nonce prefix' })
+    conn.send({ t: 'hand-error', reason: 'bad nonce prefix', code: 'bad-nonce' })
     throw new Error('bad nonce prefix')
   }
 
@@ -409,7 +447,7 @@ export async function serverHandshake (conn, { gid, getSec, lookupMember }) {
   }
   const t2 = transcript('sc-t2', fields)
   if (!Identity.verify(hello.cpub, t2, proof.sig)) {
-    conn.send({ t: 'hand-error', reason: 'initiator signature invalid' })
+    conn.send({ t: 'hand-error', reason: 'initiator signature invalid', code: 'bad-signature' })
     throw new Error('initiator signature invalid')
   }
 
@@ -420,13 +458,15 @@ export async function serverHandshake (conn, { gid, getSec, lookupMember }) {
       ? Identity.hmac(sec, `sc-join|${gid}|${mode}|${hello.cpub}|${hello.cx}`)
       : null
     if (!expect || hello.proof !== expect) {
-      conn.send({ t: 'hand-error', reason: 'invite proof rejected' })
+      conn.send({ t: 'hand-error', reason: 'invite proof rejected', code: 'bad-secret' })
       throw new Error('invite proof rejected')
     }
   } else {
     const member = lookupMember ? lookupMember(hello.cpub, fp) : null
     if (!member) {
-      conn.send({ t: 'hand-error', reason: 'not a group member' })
+      // `not-member` is what lets a member that was removed while offline stop
+      // retrying and surface "you are out" instead of looping forever
+      conn.send({ t: 'hand-error', reason: 'not a group member', code: 'not-member' })
       throw new Error('not a group member')
     }
   }

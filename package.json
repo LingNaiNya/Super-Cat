@@ -1,6 +1,6 @@
 {
   "name": "super-cat",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "A full-featured download manager",
   "homepage": "https://github.com/LingNaiNya/Super-Cat",
   "author": {
@@ -31,7 +31,7 @@
     "postinstall": "electron-builder install-app-deps && npm run lint:fix"
   },
   "engines": {
-    "node" : ">=16.0.0"
+    "node": ">=16.0.0"
   },
   "dependencies": {
     "node-fetch": "^2.6.1",

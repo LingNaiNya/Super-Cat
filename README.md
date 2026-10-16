@@ -41,6 +41,7 @@ No prebuilt packages are published at the moment; build from source (see **Devel
 - 🕶 Mock User-Agent
 - 🔔 Download completed notification
 - 🌐 **Interconnect**: build an invite-only P2P virtual LAN — group approval, member list with latency/loss & speed test, NAT hole punching, in-group task push, auto leave on exit
+- 🔒 Interconnect hardening: device key & group secret stored encrypted, 30-day invite expiry, ban list shipped with the roster, inbound connection and receive-flow limits, distinct "removed / group dissolved" outcomes
 - 📊 Dashboard with real-time transfer stats
 - 📥 App updates download as a task row with live progress & speed
 - 📋 Chinese error-code reference (`docs/error-codes.md`) — error toasts link straight to it

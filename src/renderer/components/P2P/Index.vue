@@ -28,11 +28,35 @@
 
         <template v-else>
           <div
-            v-if="lastError"
+            v-if="lastError && !outcome"
             class="p2p-alert error"
           >
             <i class="el-icon-circle-close" />
-            <span class="p2p-alert-text">{{ lastError.message }}</span>
+            <span class="p2p-alert-text">{{ p2pErrText(lastError) }}</span>
+            <el-button
+              v-if="lastRetry"
+              size="mini"
+              plain
+              @click="onRetry"
+            >{{ $t('p2p.retry') }}</el-button>
+            <el-button
+              size="mini"
+              plain
+              @click="onResetError"
+            >{{ $t('p2p.dismiss') }}</el-button>
+          </div>
+
+          <!-- 结束态：被移出 / 群已解散 / 申请未通过，各给原因与出路 -->
+          <div
+            v-if="outcome"
+            class="p2p-outcome mo-stagger-item"
+          >
+            <span class="p2p-outcome-icon">
+              <i :class="outcome.icon" />
+            </span>
+            <h3 class="p2p-outcome-title">{{ outcome.title }}</h3>
+            <p class="p2p-outcome-desc">{{ outcome.desc }}</p>
+            <p class="p2p-outcome-hint">{{ outcome.hint }}</p>
             <el-button
               size="mini"
               plain
@@ -163,6 +187,7 @@
                     v-if="isOwner"
                     size="mini"
                     plain
+                    :loading="busy === 'reset-code'"
                     @click="onResetCode"
                   >{{ $t('p2p.invite-reset') }}</el-button>
                 </div>
@@ -170,8 +195,13 @@
               <div
                 v-if="isOwner"
                 class="p2p-code"
+                role="button"
+                tabindex="0"
                 :title="$t('p2p.invite-copy-hint')"
+                :aria-label="$t('p2p.invite-copy-hint')"
                 @click="copyText(group.codeText, 'p2p.code-copied')"
+                @keyup.enter="copyText(group.codeText, 'p2p.code-copied')"
+                @keyup.space="copyText(group.codeText, 'p2p.code-copied')"
               >
                 {{ group.codeText || '—' }}
               </div>
@@ -189,8 +219,13 @@
                   <span class="p2p-field-label">{{ $t('p2p.vip-title') }}</span>
                   <span
                     class="p2p-vip"
+                    role="button"
+                    tabindex="0"
                     :title="$t('p2p.vip-copy')"
+                    :aria-label="$t('p2p.vip-copy')"
                     @click.stop="copyText(selfVip, 'p2p.vip-copy')"
+                    @keyup.enter.stop="copyText(selfVip, 'p2p.vip-copy')"
+                    @keyup.space.stop="copyText(selfVip, 'p2p.vip-copy')"
                   >{{ selfVip || $t('p2p.vip-none') }}</span>
                 </div>
                 <p class="p2p-desc">{{ $t('p2p.vip-desc') }}</p>
@@ -226,6 +261,8 @@
                 <!-- 申请还没分到 HL 号，只能靠指纹区分多个申请人 -->
                 <div class="p2p-cell p2p-cell-fp">
                   <span class="p2p-fp">{{ p.fp }}</span>
+                  <!-- 来源地址 + 已等待时长：原来只有 8 位指纹，等于盲选 -->
+                  <span class="p2p-pending-meta">{{ pendingMeta(p) }}</span>
                 </div>
                 <div class="p2p-cell p2p-cell-status">
                   <el-tag size="mini">{{ $t('p2p.pending-tag') }}</el-tag>
@@ -234,10 +271,12 @@
                   <el-button
                     type="primary"
                     size="mini"
+                    :loading="busy === 'approve:' + p.fp"
                     @click="onApprove(p.fp)"
                   >{{ $t('p2p.approve') }}</el-button>
                   <el-button
                     size="mini"
+                    :loading="busy === 'reject:' + p.fp"
                     @click="onReject(p.fp)"
                   >{{ $t('p2p.reject') }}</el-button>
                 </div>
@@ -272,8 +311,13 @@
                 >
                   <span
                     class="p2p-vip"
+                    role="button"
+                    tabindex="0"
                     :title="$t('p2p.vip-copy')"
+                    :aria-label="$t('p2p.vip-copy')"
                     @click.stop="copyText(m.vip, 'p2p.vip-copy')"
+                    @keyup.enter.stop="copyText(m.vip, 'p2p.vip-copy')"
+                    @keyup.space.stop="copyText(m.vip, 'p2p.vip-copy')"
                   >{{ m.vip }}</span>
                 </div>
                 <div class="p2p-cell p2p-cell-status">
@@ -305,6 +349,7 @@
                   <el-button
                     size="mini"
                     plain
+                    :disabled="busy.speed"
                     :loading="speedBusy === m.fp"
                     @click="onSpeedTest(m)"
                   >{{ $t('p2p.speed-test') }}</el-button>
@@ -317,7 +362,7 @@
                   <el-button
                     size="mini"
                     plain
-                    :disabled="!!file.sending"
+                    :disabled="!!file.sending || busy.send"
                     :loading="fileBusyFp === m.fp"
                     :title="$t('p2p.send-file-title')"
                     @click="onSendFile(m)"
@@ -327,12 +372,19 @@
                     size="mini"
                     type="danger"
                     plain
+                    :loading="busy === 'kick:' + m.fp"
                     @click="onKick(m)"
                   >{{ $t('p2p.kick') }}</el-button>
                 </div>
               </div>
 
               <!-- 群主独占、无人待审时的引导空态 -->
+              <p
+                v-if="isOwner"
+                class="p2p-desc p2p-members-count"
+                :class="{ 'p2p-full-text': members.length >= maxMembers }"
+              >{{ membersLabel() }}</p>
+
               <p
                 v-if="isOwner && !pending.length && members.length <= 1"
                 class="p2p-desc p2p-members-empty"
@@ -409,12 +461,55 @@
                   v-if="row.phase !== 'done'"
                   class="p2p-file-actions"
                 >
+                  <!-- 失败行给一个「重新发送」：重选同一文件即从断点续传 -->
+                  <el-button
+                    v-if="row.dir === 'send' && row.phase === 'failed'"
+                    size="mini"
+                    plain
+                    :disabled="!!file.sending || busy.send"
+                    @click="onResend(row)"
+                  >{{ $t('p2p.resend') }}</el-button>
                   <el-button
                     size="mini"
                     type="danger"
                     plain
+                    :loading="busy === 'cancel:' + row.tid"
                     @click="onCancelFile(row)"
                   >{{ $t('p2p.cancel-file') }}</el-button>
+                </div>
+              </div>
+
+              <!-- 未完成接收占了多少盘：以前这些 .part 只会在 7 天后悄悄消失 -->
+              <div
+                v-if="partsInfo()"
+                class="p2p-parts"
+              >
+                <span class="p2p-parts-text">{{ partsInfo() }}</span>
+                <el-button
+                  v-if="(file.parts || {}).bytes > 0"
+                  size="mini"
+                  plain
+                  :loading="busy === 'clear-parts'"
+                  @click="onClearParts"
+                >{{ $t('p2p.parts-clear') }}</el-button>
+              </div>
+
+              <!-- 最近传输：发完就消失的卡片让"到底成功没有"无从确认 -->
+              <div
+                v-if="(file.recent || []).length"
+                class="p2p-recent"
+              >
+                <p class="p2p-field-label">{{ $t('p2p.recent-title') }}</p>
+                <div
+                  v-for="r in file.recent"
+                  :key="`recent-${r.ts}-${r.tid}`"
+                  class="p2p-recent-row"
+                >
+                  <span
+                    class="p2p-recent-name"
+                    :title="r.savedAs || r.name"
+                  >{{ r.savedAs || r.name }}</span>
+                  <span class="p2p-recent-meta">{{ recentText(r) }}</span>
                 </div>
               </div>
             </section>
@@ -538,6 +633,7 @@
                 size="small"
                 type="danger"
                 plain
+                :loading="busy === 'leave'"
                 @click="onLeave"
               >{{ leaveLabel }}</el-button>
             </div>
@@ -601,6 +697,15 @@
     data () {
       return {
         busy: '',
+        // re-runnable action behind the error bar's "retry" (null = nothing to retry)
+        lastRetry: null,
+        // local edits in flight: a stale snapshot must not overwrite them
+        dirty: {
+          receivePush: false,
+          vipForward: false,
+          fileReceiveEnabled: false,
+          fileReceiveAsk: false
+        },
         speedBusy: '',
         fileBusyFp: '',
         clock: Date.now(),
@@ -639,7 +744,7 @@
       ]),
       inGroup () {
         return !!this.group.gid && (this.role === 'owner' || this.role === 'member') &&
-          this.status !== 'rejected' && this.status !== 'kicked'
+          this.status !== 'rejected' && this.status !== 'kicked' && this.status !== 'dissolved'
       },
       isOwner () {
         return this.role === 'owner'
@@ -655,9 +760,46 @@
           joined: { type: 'success', text: this.isOwner ? this.$t('p2p.status-owner') : this.$t('p2p.status-joined') },
           rejected: { type: 'danger', text: this.$t('p2p.status-rejected') },
           kicked: { type: 'danger', text: this.$t('p2p.status-kicked') },
+          dissolved: { type: 'danger', text: this.$t('p2p.status-dissolved') },
           error: { type: 'danger', text: this.$t('p2p.status-error') }
         }
         return map[this.status] || null
+      },
+      /**
+       * Why the group ended, told as one card instead of a bare red bar:
+       * "removed" and "dissolved" used to be the same state, and being removed
+       * is permanent (the hub keeps a ban) — the user has to know that.
+       */
+      outcome () {
+        const code = this.lastError && this.lastError.code
+        if (!code || this.inGroup) {
+          return null
+        }
+        if (code === 'kicked' || code === 'removed') {
+          return {
+            icon: 'el-icon-remove-outline',
+            title: this.$t('p2p.outcome-removed-title'),
+            desc: this.$t('p2p.outcome-removed-desc'),
+            hint: this.$t('p2p.outcome-removed-hint')
+          }
+        }
+        if (code === 'dissolved') {
+          return {
+            icon: 'el-icon-circle-close-outline',
+            title: this.$t('p2p.outcome-dissolved-title'),
+            desc: this.$t('p2p.outcome-dissolved-desc'),
+            hint: this.$t('p2p.outcome-dissolved-hint')
+          }
+        }
+        if (code === 'rejected' || code === 'banned' || code === 'approval-timeout' || code === 'approval-failed') {
+          return {
+            icon: 'el-icon-warning-outline',
+            title: this.$t('p2p.outcome-rejected-title'),
+            desc: code === 'banned' ? this.$t('p2p.outcome-banned-desc') : this.$t('p2p.outcome-rejected-desc'),
+            hint: this.$t('p2p.outcome-rejected-hint')
+          }
+        }
+        return null
       },
       endpointText () {
         if (!this.endpoint.h) {
@@ -761,24 +903,36 @@
       'settings.receiveTaskPush': {
         immediate: true,
         handler (val) {
+          if (this.dirty.receivePush) {
+            return
+          }
           this.receivePush = !!val
         }
       },
       'settings.vipForward': {
         immediate: true,
         handler (val) {
+          if (this.dirty.vipForward) {
+            return
+          }
           this.vipForward = val !== false
         }
       },
       'settings.fileReceiveEnabled': {
         immediate: true,
         handler (val) {
+          if (this.dirty.fileReceiveEnabled) {
+            return
+          }
           this.fileReceiveEnabled = val !== false
         }
       },
       'settings.fileReceiveAsk': {
         immediate: true,
         handler (val) {
+          if (this.dirty.fileReceiveAsk) {
+            return
+          }
           this.fileReceiveAsk = val !== false
         }
       }
@@ -791,12 +945,30 @@
       // state-change happens to render" — links stops pushing when offline
       this.clockTimer = setInterval(() => {
         this.clock = Date.now()
-      }, 60000)
+      }, 5000)
     },
     beforeDestroy () {
       clearInterval(this.clockTimer)
     },
     methods: {
+      /**
+       * Failure text in the UI language: the main process sends a stable `code`
+       * (plus a human-readable fallback), so an English UI no longer shows the
+       * Chinese string that happened to be baked into the error.
+       */
+      p2pErrText (payload) {
+        if (!payload) {
+          return ''
+        }
+        const fallback = payload.error || payload.message || ''
+        const code = payload.code
+        if (!code) {
+          return fallback
+        }
+        const key = `p2p.err-${code}`
+        const text = this.$t(key)
+        return text === key ? fallback : text
+      },
       copyText (text, key) {
         if (!text) {
           return
@@ -814,7 +986,8 @@
           if (resp.ok) {
             Message.success(this.$t('p2p.created'))
           } else {
-            Message.error(resp.error)
+            this.lastRetry = () => this.onCreate()
+            Message.error(this.p2pErrText(resp))
           }
         } finally {
           this.busy = ''
@@ -836,27 +1009,48 @@
           if (resp.ok) {
             Message.success(this.$t('p2p.joined'))
           } else {
-            Message.error(resp.error || resp.result?.reason || this.$t('p2p.status-rejected'))
+            this.lastRetry = () => this.onJoin()
+            Message.error(this.p2pErrText(resp) || resp.result?.reason || this.$t('p2p.status-rejected'))
           }
         } catch (err) {
-          Message.error(err.message)
+          this.lastRetry = () => this.onJoin()
+          Message.error(this.p2pErrText(err))
         } finally {
           this.busy = ''
         }
       },
       async onApprove (fp) {
-        const resp = await this.$store.dispatch('p2p/approve', fp)
-        if (!resp.ok) {
-          Message.error(resp.error)
+        if (this.busy) {
+          return
+        }
+        this.busy = `approve:${fp}`
+        try {
+          const resp = await this.$store.dispatch('p2p/approve', fp)
+          if (!resp.ok) {
+            Message.error(this.p2pErrText(resp))
+          }
+        } finally {
+          this.busy = ''
         }
       },
       async onReject (fp) {
-        const resp = await this.$store.dispatch('p2p/reject', fp)
-        if (!resp.ok) {
-          Message.error(resp.error)
+        if (this.busy) {
+          return
+        }
+        this.busy = `reject:${fp}`
+        try {
+          const resp = await this.$store.dispatch('p2p/reject', fp)
+          if (!resp.ok) {
+            Message.error(this.p2pErrText(resp))
+          }
+        } finally {
+          this.busy = ''
         }
       },
       async onKick (m) {
+        if (this.busy) {
+          return
+        }
         try {
           await this.$confirm(this.$t('p2p.kick-confirm', { name: m.name }), this.$t('p2p.kick'), {
             confirmButtonText: this.$t('p2p.confirm'),
@@ -866,12 +1060,20 @@
         } catch (err) {
           return
         }
-        const resp = await this.$store.dispatch('p2p/kick', m.fp)
-        if (!resp.ok) {
-          Message.error(resp.error)
+        this.busy = `kick:${m.fp}`
+        try {
+          const resp = await this.$store.dispatch('p2p/kick', m.fp)
+          if (!resp.ok) {
+            Message.error(this.p2pErrText(resp))
+          }
+        } finally {
+          this.busy = ''
         }
       },
       async onResetCode () {
+        if (this.busy) {
+          return
+        }
         try {
           await this.$confirm(this.$t('p2p.reset-code-confirm'), this.$t('p2p.invite-reset'), {
             confirmButtonText: this.$t('p2p.confirm'),
@@ -881,14 +1083,23 @@
         } catch (err) {
           return
         }
-        const resp = await this.$store.dispatch('p2p/resetCode')
-        if (resp.ok) {
-          Message.success(this.$t('p2p.code-reset'))
-        } else {
-          Message.error(resp.error)
+        this.busy = 'reset-code'
+        try {
+          const resp = await this.$store.dispatch('p2p/resetCode')
+          if (resp.ok) {
+            Message.success(this.$t('p2p.code-reset'))
+          } else {
+            this.lastRetry = () => this.onResetCode()
+            Message.error(this.p2pErrText(resp))
+          }
+        } finally {
+          this.busy = ''
         }
       },
       async onLeave () {
+        if (this.busy) {
+          return
+        }
         try {
           await this.$confirm(
             this.isOwner ? this.$t('p2p.dissolve-confirm') : this.$t('p2p.leave-confirm'),
@@ -902,48 +1113,99 @@
         } catch (err) {
           return
         }
-        const resp = await this.$store.dispatch('p2p/leave')
-        if (!resp.ok) {
-          Message.error(resp.error)
+        this.busy = 'leave'
+        try {
+          const resp = await this.$store.dispatch('p2p/leave')
+          if (!resp.ok) {
+            Message.error(this.p2pErrText(resp))
+          }
+        } finally {
+          this.busy = ''
+        }
+      },
+      onResend (row) {
+        const member = this.members.find((m) => m.fp === row.peer)
+        if (!member) {
+          Message.warning(this.$t('p2p.push-target-gone'))
+          return
+        }
+        this.onSendFile(member)
+      },
+      /** Re-run the action that produced the current error bar (if we know it). */
+      onRetry () {
+        const fn = this.lastRetry
+        this.lastRetry = null
+        if (typeof fn === 'function') {
+          fn()
+        }
+      },
+      /**
+       * Every settings write goes through here: the call used to be fired
+       * without looking at the answer, so a rejected update (or a thrown IPC
+       * error) meant "the switch moved but nothing happened" — silently.
+       */
+      async saveSettings (patch, revert, dirtyKey = null) {
+        const back = () => {
+          if (dirtyKey) {
+            this.dirty[dirtyKey] = false
+          }
+          if (typeof revert === 'function') {
+            revert()
+          }
+        }
+        try {
+          const resp = await this.$store.dispatch('p2p/updateSettings', patch)
+          if (resp && resp.ok) {
+            if (dirtyKey) {
+              this.dirty[dirtyKey] = false
+            }
+            return true
+          }
+          Message.error(this.p2pErrText(resp) || this.$t('p2p.settings-failed'))
+          back()
+          return false
+        } catch (err) {
+          Message.error(this.p2pErrText(err) || this.$t('p2p.settings-failed'))
+          back()
+          return false
         }
       },
       async onSavePorts () {
         const custom = this.customPorts
         const ports = [...new Set([...this.checkedPorts, ...custom])]
-        const resp = await this.$store.dispatch('p2p/updateSettings', { openPorts: ports })
-        if (!resp.ok) {
-          Message.error(resp.error)
-        }
+        await this.saveSettings({ openPorts: ports })
       },
-      addPort () {
+      async addPort () {
         const port = Number(this.customPortInput)
         if (!Number.isInteger(port) || port <= 0 || port >= 65536) {
           Message.warning(this.$t('p2p.bad-port'))
           return
         }
-        this.customPortInput = ''
         const ports = [...new Set([...(this.settings.openPorts || []), port])]
-        this.$store.dispatch('p2p/updateSettings', { openPorts: ports })
+        if (await this.saveSettings({ openPorts: ports })) {
+          // clear only on success, so a rejected port is not swallowed
+          this.customPortInput = ''
+        }
       },
-      removePort (port) {
+      async removePort (port) {
         const ports = (this.settings.openPorts || []).filter((p) => p !== port)
-        this.$store.dispatch('p2p/updateSettings', { openPorts: ports })
+        await this.saveSettings({ openPorts: ports })
       },
       async onSaveReceivePush () {
-        const resp = await this.$store.dispatch('p2p/updateSettings', {
-          receiveTaskPush: this.receivePush
-        })
-        if (!resp.ok) {
-          Message.error(resp.error)
-        }
+        this.dirty.receivePush = true
+        await this.saveSettings(
+          { receiveTaskPush: this.receivePush },
+          () => { this.receivePush = !!this.settings.receiveTaskPush },
+          'receivePush'
+        )
       },
       async onSaveVipForward () {
-        const resp = await this.$store.dispatch('p2p/updateSettings', {
-          vipForward: this.vipForward
-        })
-        if (!resp.ok) {
-          Message.error(resp.error)
-        }
+        this.dirty.vipForward = true
+        await this.saveSettings(
+          { vipForward: this.vipForward },
+          () => { this.vipForward = this.settings.vipForward !== false },
+          'vipForward'
+        )
       },
       async onResetError () {
         await this.$store.dispatch('p2p/resetError')
@@ -955,6 +1217,15 @@
         this.pushVisible = true
       },
       async onPush () {
+        // the dialog may have been open while the member was kicked or went
+        // offline: re-check against the live roster before sending
+        const target = this.members.find((m) => m.fp === this.pushTargetFp)
+        if (!target) {
+          this.pushVisible = false
+          Message.warning(this.$t('p2p.push-target-gone'))
+          return
+        }
+        this.pushTargetName = target.name
         const urls = this.pushUrls.split('\n').map((s) => s.trim()).filter(Boolean)
         if (!urls.length) {
           Message.warning(this.$t('p2p.push-required'))
@@ -975,7 +1246,7 @@
             }
             this.pushVisible = false
           } else {
-            Message.error(resp.error)
+            Message.error(this.p2pErrText(resp))
           }
         } finally {
           this.busy = ''
@@ -1062,12 +1333,12 @@
         try {
           const resp = await this.$store.dispatch('p2p/speedTest', { target: m.fp })
           if (!resp.ok) {
-            Message.error(resp.error)
+            Message.error(this.p2pErrText(resp))
           } else if (resp.result) {
             Message.success(this.$t('p2p.speed-result', { down: resp.result.down, up: resp.result.up }))
           }
         } catch (err) {
-          Message.error(err.message)
+          Message.error(this.p2pErrText(err))
         } finally {
           this.speedBusy = ''
         }
@@ -1084,38 +1355,115 @@
           // result just means the user backed out of one of them
           const resp = await this.$store.dispatch('p2p/sendFile', { target: m.fp })
           if (!resp.ok) {
-            Message.error(resp.error)
+            Message.error(this.p2pErrText(resp))
           }
         } catch (err) {
-          Message.error(err.message)
+          Message.error(this.p2pErrText(err))
         } finally {
           this.fileBusyFp = ''
         }
       },
       async onCancelFile (row) {
-        const resp = await this.$store.dispatch('p2p/cancelFile', { dir: row.dir, tid: row.tid })
-        if (!resp.ok) {
-          Message.error(resp.error)
+        if (this.busy) {
+          return
+        }
+        this.busy = `cancel:${row.tid}`
+        try {
+          const resp = await this.$store.dispatch('p2p/cancelFile', { dir: row.dir, tid: row.tid })
+          if (!resp.ok) {
+            Message.error(this.p2pErrText(resp))
+          }
+        } finally {
+          this.busy = ''
         }
       },
       async onPickReceiveDir () {
-        await this.$store.dispatch('p2p/pickReceiveDir')
+        try {
+          const resp = await this.$store.dispatch('p2p/pickReceiveDir')
+          if (resp && resp.ok === false) {
+            Message.error(this.p2pErrText(resp) || this.$t('p2p.settings-failed'))
+          }
+        } catch (err) {
+          Message.error(this.p2pErrText(err) || this.$t('p2p.settings-failed'))
+        }
       },
       async onSaveFileReceive () {
-        const resp = await this.$store.dispatch('p2p/updateSettings', {
-          fileReceiveEnabled: this.fileReceiveEnabled
-        })
-        if (!resp.ok) {
-          Message.error(resp.error)
-        }
+        this.dirty.fileReceiveEnabled = true
+        await this.saveSettings(
+          { fileReceiveEnabled: this.fileReceiveEnabled },
+          () => { this.fileReceiveEnabled = this.settings.fileReceiveEnabled !== false },
+          'fileReceiveEnabled'
+        )
       },
       async onSaveFileAsk () {
-        const resp = await this.$store.dispatch('p2p/updateSettings', {
-          fileReceiveAsk: this.fileReceiveAsk
-        })
-        if (!resp.ok) {
-          Message.error(resp.error)
+        this.dirty.fileReceiveAsk = true
+        await this.saveSettings(
+          { fileReceiveAsk: this.fileReceiveAsk },
+          () => { this.fileReceiveAsk = this.settings.fileReceiveAsk !== false },
+          'fileReceiveAsk'
+        )
+      },
+      maxMembers () {
+        return this.$store.state.p2p.maxMembers || 64
+      },
+      /** 群主看得到人数上限：满员时要能提前知道，而不是等申请人报错 */
+      membersLabel () {
+        const max = this.maxMembers()
+        if (this.members.length >= max) {
+          return this.$t('p2p.group-full-hint', { max })
         }
+        return this.$t('p2p.members-count', { count: this.members.length, max })
+      },
+      pendingMeta (p) {
+        const ip = p.ip || this.$t('p2p.ip-unknown')
+        const waited = Math.max(0, Math.floor(((this.clock || Date.now()) - (p.since || 0)) / 1000))
+        return this.$t('p2p.pending-meta', { ip, sec: waited })
+      },
+      /** 未完成接收占用 + 磁盘剩余（数字来自主进程缓存的扫描结果） */
+      partsInfo () {
+        const p = this.file.parts || {}
+        if (!p.bytes && p.free === null) {
+          return ''
+        }
+        return this.$t('p2p.parts-usage', {
+          size: this.fmtBytes(p.bytes || 0),
+          free: typeof p.free === 'number' ? this.fmtBytes(p.free) : '—'
+        })
+      },
+      async onClearParts () {
+        if (this.busy) {
+          return
+        }
+        try {
+          await this.$confirm(this.$t('p2p.parts-clear-confirm'), this.$t('p2p.parts-clear'), {
+            confirmButtonText: this.$t('p2p.confirm'),
+            cancelButtonText: this.$t('p2p.cancel'),
+            type: 'warning'
+          })
+        } catch (err) {
+          return
+        }
+        this.busy = 'clear-parts'
+        try {
+          const resp = await this.$store.dispatch('p2p/clearParts')
+          if (resp && resp.ok !== false) {
+            const freed = (resp.result && resp.result.freed) || 0
+            Message.success(this.$t('p2p.parts-cleared', { size: this.fmtBytes(freed) }))
+          } else {
+            Message.error(this.p2pErrText(resp) || this.$t('p2p.settings-failed'))
+          }
+        } catch (err) {
+          Message.error(this.p2pErrText(err) || this.$t('p2p.settings-failed'))
+        } finally {
+          this.busy = ''
+        }
+      },
+      /** 最近传输一行：方向 · 对方 · 大小 · 结果 · 时间（HH:MM） */
+      recentText (r) {
+        const dir = r.dir === 'send' ? this.$t('p2p.recent-sent') : this.$t('p2p.recent-received')
+        const result = r.ok ? this.$t('p2p.phase-done') : this.reasonText(r.reason)
+        const when = new Date(r.ts || Date.now()).toTimeString().slice(0, 5)
+        return `${dir} · ${r.peerName || '?'} · ${this.fmtBytes(r.size)} · ${result} · ${when}`
       },
       peerName (fp) {
         const m = this.members.find((x) => x.fp === fp)
@@ -1163,6 +1511,14 @@
   --p2p-ok-rgb: 103, 194, 58;
   --p2p-warn-rgb: 230, 162, 60;
   --p2p-bad-rgb: 245, 108, 108;
+  /* 同一组颜色作“文字”用时的深色档：Element 原色直接当文字只有
+     2.2~2.9:1，读不清；描边与底色仍用上面的三元组。 */
+  --p2p-ok-text: #3d7f1f;
+  --p2p-warn-text: #96601a;
+  --p2p-bad-text: #b93b3b;
+  /* 本页作用域内把次级说明文字压深到 ≥4.5:1
+     （只覆盖页面内的 token，不动全局，避免波及其它页面） */
+  --mo-text-secondary: #6a6e78;
   padding: 24px 40px 72px;
 }
 
@@ -1171,6 +1527,11 @@
   --p2p-ok-rgb: 133, 206, 97;
   --p2p-warn-rgb: 235, 181, 99;
   --p2p-bad-rgb: 247, 137, 137;
+  /* 暗色下原色本身够亮，文字直接沿用 */
+  --p2p-ok-text: rgb(var(--p2p-ok-rgb));
+  --p2p-warn-text: rgb(var(--p2p-warn-rgb));
+  --p2p-bad-text: rgb(var(--p2p-bad-rgb));
+  --mo-text-secondary: #9a9cab;
 }
 
 @media only screen and (min-width: 568px) {
@@ -1255,7 +1616,7 @@
     color: var(--mo-text-regular);
 
     > i {
-      color: rgb(var(--p2p-bad-rgb));
+      color: var(--p2p-bad-text);
     }
   }
   &.warn {
@@ -1264,8 +1625,63 @@
     color: var(--mo-text-regular);
 
     > i {
-      color: rgb(var(--p2p-warn-rgb));
+      color: var(--p2p-warn-text);
     }
+  }
+}
+
+/* 结束态卡片（被移出 / 群解散 / 申请未通过）：与警告条同一条居中列，
+   把「发生了什么 + 现在还能做什么」一次说清，替代原来那条只有一句红字的气泡。 */
+.p2p-outcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 640px;
+  margin: 8px auto 28px;
+  padding: 24px 28px;
+  text-align: center;
+  border-radius: $mo-radius-lg;
+  background: rgba(var(--p2p-bad-rgb), 0.08);
+  border: 1px solid rgba(var(--p2p-bad-rgb), 0.32);
+
+  .p2p-outcome-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: $mo-radius-pill;
+    color: var(--p2p-bad-text);
+    background: rgba(var(--p2p-bad-rgb), 0.12);
+    border: 1px solid rgba(var(--p2p-bad-rgb), 0.35);
+
+    > i {
+      font-size: 26px;
+    }
+  }
+
+  .p2p-outcome-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--mo-text-primary);
+  }
+
+  .p2p-outcome-desc {
+    margin: 0;
+    max-width: 520px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--mo-text-regular);
+  }
+
+  .p2p-outcome-hint {
+    margin: 0;
+    max-width: 520px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--mo-text-secondary);
   }
 }
 
@@ -1522,7 +1938,7 @@
   color: var(--mo-text-secondary);
 
   .fail-text {
-    color: rgba(var(--p2p-bad-rgb), 1);
+    color: var(--p2p-bad-text);
   }
 }
 
@@ -1645,6 +2061,46 @@
       justify-self: end;
     }
   }
+
+  /* 最小窗口（窗口最小宽度 478）：上一条断点里 80+84+252 三列定宽仍然超出
+     可用宽度，按钮会被裁掉且没有横向滚动条可救。这里再降一级——两列轨道，
+     按钮整行放到第三排并允许换行，保证任何宽度下都能点到。 */
+  @media (max-width: 560px) {
+    grid-template-columns: minmax(0, 1fr) 76px;
+
+    .p2p-cell-status {
+      grid-column: 2;
+      grid-row: 1;
+      justify-self: end;
+    }
+
+    .p2p-cell-badges {
+      grid-column: 2;
+      grid-row: 2;
+      justify-self: end;
+    }
+
+    .p2p-cell-vip,
+    .p2p-cell-fp {
+      grid-column: 1;
+      grid-row: 2;
+      justify-self: start;
+    }
+
+    .p2p-cell-actions {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      justify-self: stretch;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .p2p-cell-stats {
+      grid-column: 1 / -1;
+      grid-row: 4;
+      justify-self: start;
+    }
+  }
 }
 
 .p2p-cell {
@@ -1730,17 +2186,17 @@
   white-space: nowrap;
 
   &.ok {
-    color: rgb(var(--p2p-ok-rgb));
+    color: var(--p2p-ok-text);
     background: rgba(var(--p2p-ok-rgb), 0.12);
     border-color: rgba(var(--p2p-ok-rgb), 0.35);
   }
   &.mid {
-    color: rgb(var(--p2p-warn-rgb));
+    color: var(--p2p-warn-text);
     background: rgba(var(--p2p-warn-rgb), 0.12);
     border-color: rgba(var(--p2p-warn-rgb), 0.35);
   }
   &.bad {
-    color: rgb(var(--p2p-bad-rgb));
+    color: var(--p2p-bad-text);
     background: rgba(var(--p2p-bad-rgb), 0.12);
     border-color: rgba(var(--p2p-bad-rgb), 0.35);
   }
@@ -1781,6 +2237,65 @@
   color: var(--mo-text-secondary, rgba(255, 255, 255, 0.45));
 }
 
+/* 未完成接收占用 + 清理 */
+.p2p-parts {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.p2p-parts-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--mo-text-secondary);
+}
+
+/* 最近传输（最多 5 条，只读历史） */
+.p2p-recent {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--mo-border-color, rgba(255, 255, 255, 0.08));
+}
+
+.p2p-recent-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.p2p-recent-name {
+  flex: 0 1 auto;
+  max-width: 45%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--mo-text-regular, rgba(255, 255, 255, 0.75));
+}
+
+.p2p-recent-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--mo-text-secondary);
+}
+
+/* 待审批行第二行：来源地址 + 已等待时长 */
+.p2p-pending-meta {
+  font-size: 11px;
+  color: var(--mo-text-secondary);
+  white-space: nowrap;
+}
+
 .p2p-vip {
   padding: 2px 10px;
   border-radius: $mo-radius-pill;
@@ -1799,7 +2314,7 @@
 }
 
 .conflict-text {
-  color: rgb(var(--p2p-warn-rgb));
+  color: var(--p2p-warn-text);
 }
 
 .p2p-field {

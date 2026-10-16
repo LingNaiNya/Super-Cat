@@ -234,6 +234,10 @@ export default class Application extends EventEmitter {
       this.confirmFileOffer(payload)
     })
 
+    this.p2pManager.on('speed-request', (payload) => {
+      this.confirmSpeedRequest(payload)
+    })
+
     this.p2pManager.on('file-event', (payload) => {
       this.sendCommandToAll('application:p2p-file-event', payload)
     })
@@ -261,7 +265,9 @@ export default class Application extends EventEmitter {
         }),
         detail: this.i18n.t('p2p.file-offer-detail', { dir: this.p2pManager.receiveDir() }),
         buttons: [this.i18n.t('p2p.receive'), this.i18n.t('p2p.cancel')],
-        defaultId: 0,
+        // Enter must not accept an inbound file: a stray keypress used to start
+        // a transfer, and the peer picks both the name and the content.
+        defaultId: 1,
         cancelId: 1,
         noLink: true
       }
@@ -276,6 +282,39 @@ export default class Application extends EventEmitter {
     if (res) {
       this.sendCommandToAll('application:p2p-file-event', { dir: 'recv', tid: offer.tid, started: true })
     }
+  }
+
+  /**
+   * A peer asked to run a speed test against us (it would push ~24 MiB through
+   * the link). Servable at will before, so the user decides now; the manager
+   * auto-refuses after 30s, which is why a late answer simply does nothing.
+   */
+  async confirmSpeedRequest (req = {}) {
+    const win = this.windowManager && this.windowManager.getWindow('index')
+    const mb = Math.max(1, Math.round((req.bytes || 0) / (1024 * 1024)))
+    let accept = false
+    try {
+      const opts = {
+        type: 'question',
+        title: this.i18n.t('p2p.speed-ask-title'),
+        message: this.i18n.t('p2p.speed-ask-message', { from: req.from || '?', mb }),
+        buttons: [this.i18n.t('p2p.speed-ask-allow'), this.i18n.t('p2p.cancel')],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true
+      }
+      if (win && typeof win.isMinimized === 'function' && win.isMinimized()) {
+        win.restore()
+        win.show()
+      }
+      const result = win
+        ? await dialog.showMessageBox(win, opts)
+        : await dialog.showMessageBox(opts)
+      accept = result.response === 0
+    } catch (err) {
+      logger.warn('[Super Cat] speed request dialog failed:', err.message)
+    }
+    this.p2pManager.respondSpeedRequest({ fp: req.fp, accept })
   }
 
   initAutoLaunchManager () {
@@ -1103,7 +1142,13 @@ export default class Application extends EventEmitter {
         return { ok: true, result: result === undefined ? null : result, state: this.p2pManager.getState() }
       } catch (err) {
         logger.warn('[Super Cat] p2p invoke failed:', err.message)
-        return { ok: false, error: err.message, state: this.p2pManager.getState() }
+        // `code` lets the renderer render the failure in the UI language
+        return {
+          ok: false,
+          error: err.message,
+          code: err.code || null,
+          state: this.p2pManager.getState()
+        }
       }
     }
 
@@ -1134,7 +1179,7 @@ export default class Application extends EventEmitter {
           name: path.split(/[\\/]/).pop(),
           to: (member && member.name) || '?'
         }),
-        buttons: [this.i18n.t('p2p.push-send'), this.i18n.t('p2p.cancel')],
+        buttons: [this.i18n.t('p2p.send-file-confirm-button'), this.i18n.t('p2p.cancel')],
         defaultId: 0,
         cancelId: 1,
         noLink: true
@@ -1145,6 +1190,7 @@ export default class Application extends EventEmitter {
       return this.p2pManager.sendFile(payload.target, path)
     }))
     ipcMain.handle('p2p:cancel-file', p2pInvoke((payload) => this.p2pManager.cancelFileTransfer(payload)))
+    ipcMain.handle('p2p:clear-parts', p2pInvoke(() => this.p2pManager.clearParts()))
     ipcMain.handle('p2p:pick-receive-dir', p2pInvoke(async () => {
       const win = this.windowManager && this.windowManager.getWindow('index')
       const options = {
@@ -1158,6 +1204,7 @@ export default class Application extends EventEmitter {
       if (picked.canceled || !picked.filePaths.length) {
         return this.p2pManager.getState().settings.fileReceiveDir
       }
+      this.p2pManager.notePickedDir(picked.filePaths[0])
       await this.p2pManager.updateSettings({ fileReceiveDir: picked.filePaths[0] })
       return picked.filePaths[0]
     }))

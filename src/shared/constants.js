@@ -296,7 +296,9 @@ export const P2P_STATUS = {
   JOINED: 'joined',
   REJECTED: 'rejected',
   KICKED: 'kicked',
-  ERROR: 'error'
+  ERROR: 'error',
+  // the hub dissolved the group — different outcome, different UI
+  DISSOLVED: 'dissolved'
 }
 
 export const P2P_JOIN_MODE = {

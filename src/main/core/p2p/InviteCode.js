@@ -5,6 +5,15 @@ import Identity, { base32Encode } from './Identity'
 
 const B62_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 const B62_BASE = 62n
+const CODE_MAX_CHARS = 2048
+const CODE_PAYLOAD_MAX = 64 * 1024
+
+/** Decode failures reach the UI directly, so they carry a translatable code. */
+function inviteError (code, message) {
+  const err = new Error(message)
+  err.code = code
+  return err
+}
 // v2: `eps[]` carries every candidate endpoint (public UPnP / STUN / LAN /
 // manual) so joiners can race them all; v1 codes stay decodable.
 const CODE_VERSION = 2
@@ -57,7 +66,13 @@ export function formatCode (code) {
 
 /** Accepts pasted codes with spaces, dashes or newlines. */
 export function sanitizeCode (raw) {
-  return String(raw || '').replace(/[^0-9A-Za-z]/g, '')
+  const clean = String(raw || '').replace(/[^0-9A-Za-z]/g, '')
+  // A real code is a few hundred characters; anything far beyond that is a
+  // paste bomb aimed at the BigInt/base62 decode below (which is O(n²)).
+  if (clean.length > CODE_MAX_CHARS) {
+    throw inviteError('code-invalid', 'invite code is too long')
+  }
+  return clean
 }
 
 export function generateGroupId () {
@@ -72,17 +87,27 @@ export function generateGroupId () {
  * attacker.
  */
 export default class InviteCode {
-  static encode ({ gid, eps, ep, sec }, identity) {
+  static encode ({ gid, eps, ep, sec, iat, ttlDays }, identity) {
     const list = (eps && eps.length ? eps : [ep]).filter((e) => e && e.h && e.p)
     if (!gid || !list.length || !identity || !sec) {
       throw new Error('invite payload incomplete')
     }
+    // The code carries the group secret plus the owner's public address, so it
+    // is born with an expiry: a copy pasted into a chat log stops working on
+    // its own, and the owner can always mint a fresh one from the /p2p page.
+    const issuedAt = Number.isFinite(Number(iat)) && Number(iat) > 0
+      ? Math.floor(Number(iat))
+      : Math.floor(Date.now() / 1000)
+    const ttl = Number(ttlDays)
+    const exp = Number.isFinite(ttl) && ttl > 0 ? issuedAt + Math.floor(ttl * 86400) : 0
     const payload = JSON.stringify({
       v: CODE_VERSION,
       gid,
       eps: list.map((e) => ({ h: String(e.h), p: Number(e.p) })),
       pub: identity.pubB64,
-      sec
+      sec,
+      iat: issuedAt,
+      exp
     })
     const jsonBuf = Buffer.from(payload, 'utf8')
     const sig = Buffer.from(identity.sign(jsonBuf), 'base64')
@@ -95,16 +120,17 @@ export default class InviteCode {
   static decode (rawCode) {
     const code = sanitizeCode(rawCode)
     if (!code) {
-      throw new Error('invite code is empty')
+      throw inviteError('code-invalid', 'invite code is empty')
     }
     let packed
     try {
-      packed = inflateSync(b62decode(code))
+      // maxOutputLength bounds a decompression bomb: the code is attacker-supplied
+      packed = inflateSync(b62decode(code), { maxOutputLength: CODE_PAYLOAD_MAX })
     } catch (err) {
-      throw new Error('invite code is not valid')
+      throw inviteError('code-invalid', 'invite code is not valid')
     }
     if (packed.length < 2 + 64) {
-      throw new Error('invite code is truncated')
+      throw inviteError('code-invalid', 'invite code is truncated')
     }
     const jsonLen = packed.readUInt16BE(0)
     const jsonBuf = packed.subarray(2, 2 + jsonLen)
@@ -113,26 +139,33 @@ export default class InviteCode {
     try {
       payload = JSON.parse(jsonBuf.toString('utf8'))
     } catch (err) {
-      throw new Error('invite code payload is corrupt')
+      throw inviteError('code-invalid', 'invite code payload is corrupt')
     }
     if (!SUPPORTED_VERSIONS.includes(payload.v)) {
-      throw new Error('invite code version not supported')
+      throw inviteError('code-unsupported', 'invite code version not supported')
     }
     const ok = Identity.verify(payload.pub, jsonBuf, sig.toString('base64'))
     if (!ok) {
-      throw new Error('invite code signature invalid')
+      throw inviteError('code-invalid', 'invite code signature invalid')
+    }
+    // Checked after the signature: an attacker must not be able to "extend" a
+    // code by editing its timestamps, and v1 codes simply have no expiry.
+    if (payload.exp && Number(payload.exp) * 1000 < Date.now()) {
+      const err = new Error('邀请码已过期，请让群主重新生成')
+      err.code = 'expired'
+      throw err
     }
     let eps
     if (payload.v === 1) {
       if (!payload.h || !payload.p) {
-        throw new Error('invite code missing fields')
+        throw inviteError('code-invalid', 'invite code missing fields')
       }
       eps = [{ h: payload.h, p: Number(payload.p) }]
     } else {
       eps = (payload.eps || []).map((e) => ({ h: e.h, p: Number(e.p) }))
     }
     if (!payload.gid || !eps.length || !payload.sec) {
-      throw new Error('invite code missing fields')
+      throw inviteError('code-invalid', 'invite code missing fields')
     }
     return {
       v: payload.v,
@@ -140,7 +173,9 @@ export default class InviteCode {
       eps,
       ep: eps[0],
       pub: payload.pub,
-      sec: payload.sec
+      sec: payload.sec,
+      iat: Number(payload.iat) || 0,
+      exp: Number(payload.exp) || 0
     }
   }
 }
